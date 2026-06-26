@@ -1,0 +1,13 @@
+import path from 'path'
+import { defineConfig } from 'prisma/config'
+
+export default defineConfig({
+  earlyAccess: true,
+  schema: path.join('prisma', 'schema.prisma'),
+  migrate: {
+    async adapter() {
+      const { PrismaPostgres } = await import('@prisma/adapter-postgres')
+      return new PrismaPostgres({ connectionString: process.env.DATABASE_URL })
+    }
+  }
+})
