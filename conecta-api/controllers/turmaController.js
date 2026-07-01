@@ -62,40 +62,44 @@ const atualizar = async (req, res) => {
 
 const matriculasDaTurma = async (req, res) => {
   const { id } = req.params
-  const { mes } = req.query
+  const { mes, ativa } = req.query
 
-  if (!mes) {
-    return res.status(400).json({ erro: 'Informe o mês. Ex: ?mes=2026-06' })
+  const where = {
+    turmaId: Number(id),
+    ...(ativa === 'true' ? { ativa: true } : {})
   }
 
   try {
     const matriculas = await prisma.matricula.findMany({
-      where: {
-        turmaId: Number(id),
-        ativa: true
-      },
+      where,
       orderBy: { usuario: { nome: 'asc' } },
       select: {
         id: true,
-        usuario: { select: { nome: true } },
-        pagamentos: {
-          where: { mesReferencia: mes },
-          select: {
-            id: true,
-            valor: true,
-            status: true,
-            vencimento: true,
-            dataPagamento: true,
-            formaPagamento: true
-          }
-        }
+        ativa: true,
+        usuario: { select: { id: true, nome: true } },
+        ...(mes
+          ? {
+              pagamentos: {
+                where: { mesReferencia: mes },
+                select: {
+                  id: true,
+                  valor: true,
+                  status: true,
+                  vencimento: true,
+                  dataPagamento: true,
+                  formaPagamento: true
+                }
+              }
+            }
+          : {})
       }
     })
 
     const resultado = matriculas.map((matricula) => ({
       id: matricula.id,
+      ativa: matricula.ativa,
       usuario: matricula.usuario,
-      pagamento: matricula.pagamentos[0] || null
+      ...(mes ? { pagamento: matricula.pagamentos[0] || null } : {})
     }))
 
     res.json(resultado)
