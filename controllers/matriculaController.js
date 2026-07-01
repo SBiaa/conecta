@@ -36,12 +36,46 @@ const criar = async (req, res) => {
 
 const atualizar = async (req, res) => {
   const { id } = req.params
-  const { ativa } = req.body
+  const { ativa, exameMedico, turmaId } = req.body
+
+  if (exameMedico && !EXAMES_MEDICOS_VALIDOS.includes(exameMedico)) {
+    return res.status(400).json({
+      erro: 'O campo "exameMedico" deve ser um de: APTO, NAO_APTO, AGUARDANDO'
+    })
+  }
 
   try {
+    if (turmaId) {
+      const matriculaAtual = await prisma.matricula.findUnique({
+        where: { id: Number(id) },
+        select: { turma: { select: { projetoId: true } } }
+      })
+
+      if (!matriculaAtual) {
+        return res.status(404).json({ erro: 'Matrícula não encontrada' })
+      }
+
+      const turmaNova = await prisma.turma.findUnique({
+        where: { id: Number(turmaId) },
+        select: { projetoId: true }
+      })
+
+      if (!turmaNova) {
+        return res.status(404).json({ erro: 'Turma não encontrada' })
+      }
+
+      if (turmaNova.projetoId !== matriculaAtual.turma.projetoId) {
+        return res.status(400).json({ erro: 'A nova turma deve ser do mesmo projeto' })
+      }
+    }
+
     const matricula = await prisma.matricula.update({
       where: { id: Number(id) },
-      data: { ativa }
+      data: {
+        ...(ativa !== undefined ? { ativa } : {}),
+        ...(exameMedico ? { exameMedico } : {}),
+        ...(turmaId ? { turmaId: Number(turmaId) } : {})
+      }
     })
     res.json(matricula)
   } catch (erro) {
