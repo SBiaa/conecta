@@ -3,8 +3,7 @@ const cors = require('cors')
 require('dotenv').config()
 
 const authRoutes = require('./routes/auth')
-const associadosRoutes = require('./routes/associados')
-const usuariosRoutes = require('./routes/usuarios')
+const usuariosRoutes = require('./routes/usuarios')      // associados REMOVIDO daqui
 const projetosRoutes = require('./routes/projetos')
 const turmasRoutes = require('./routes/turmas')
 const matriculasRoutes = require('./routes/matriculas')
@@ -18,7 +17,7 @@ app.use(express.json())
 // ...
 app.use('/turmas', autenticar, exigirPapel('ADMIN'), turmasRoutes)
 app.use('/auth', authRoutes)
-app.use('/associados', autenticar, associadosRoutes)
+// a linha do /associados foi REMOVIDA
 app.use('/usuarios', autenticar, exigirPapel('ADMIN'), usuariosRoutes)
 app.use('/projetos', autenticar, exigirPapel('ADMIN'), projetosRoutes)
 app.use('/matriculas', autenticar, exigirPapel('ADMIN'), matriculasRoutes)

@@ -1,28 +1,32 @@
 const prisma = require('../db')
 
 const listar = async (req, res) => {
-  const { mes, status, projetoId } = req.query
+  const { mes, status, projetoId, usuarioId } = req.query
 
-  if (!mes) {
+  if (!mes && !usuarioId) {
     return res.status(400).json({ erro: 'O parâmetro "mes" é obrigatório' })
   }
 
   try {
     const pagamentos = await prisma.pagamento.findMany({
       where: {
-        mesReferencia: mes,
+        ...(mes ? { mesReferencia: mes } : {}),
         ...(status ? { status } : {}),
-        ...(projetoId ? { matricula: { turma: { projetoId: Number(projetoId) } } } : {})
+        ...(projetoId ? { matricula: { turma: { projetoId: Number(projetoId) } } } : {}),
+        ...(usuarioId ? { matricula: { usuarioId } } : {})
       },
-      orderBy: [
-        { matricula: { turma: { projeto: { nome: 'asc' } } } },
-        { matricula: { turma: { nome: 'asc' } } },
-        { matricula: { usuario: { nome: 'asc' } } }
-      ],
+      orderBy: usuarioId
+        ? [{ mesReferencia: 'desc' }]
+        : [
+            { matricula: { turma: { projeto: { nome: 'asc' } } } },
+            { matricula: { turma: { nome: 'asc' } } },
+            { matricula: { usuario: { nome: 'asc' } } }
+          ],
       select: {
         id: true,
         valor: true,
         status: true,
+        mesReferencia: true,
         vencimento: true,
         formaPagamento: true,
         matricula: {

@@ -70,15 +70,29 @@ const buscarPorId = async (req, res) => {
         papel: true,
         status: true,
         criadoEm: true,
+        rg: true,
+        dataNascimento: true,
+        tomaMedicamento: true,
+        qualMedicamento: true,
+        cep: true,
+        logradouro: true,
+        numero: true,
+        complemento: true,
+        bairro: true,
+        cidade: true,
+        uf: true,
         matriculas: {
           select: {
             id: true,
             ativa: true,
             dataInicio: true,
+            exameMedico: true,
             turma: {
               select: {
                 id: true,
                 nome: true,
+                horario: true,
+                dias: true,
                 projeto: { select: { id: true, nome: true } }
               }
             }
