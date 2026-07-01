@@ -1,0 +1,121 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+   provider = "prisma-client-js"
+}
+
+datasource db {
+   provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Papel {
+  ADMIN
+  PROFESSOR
+  ASSOCIADO
+}
+
+enum Status {
+  ATIVO
+  INATIVO
+}
+
+enum StatusPagamento {
+  PENDENTE
+  PAGA
+}
+
+enum FormaPagamento {
+  DINHEIRO
+  PIX
+  CARTAO
+}
+
+enum ExameMedico {
+  APTO
+  NAO_APTO
+  AGUARDANDO
+}
+
+model Usuario {
+  id        String   @id @default(uuid())
+  nome      String
+  cpf       String   @unique
+  senha     String
+  email     String?  @unique
+  telefone  String?
+  papel     Papel    @default(ASSOCIADO)
+  status    Status   @default(ATIVO)
+  criadoEm  DateTime @default(now())
+cep         String?
+  logradouro  String?   // a rua
+  numero      String?   // texto, não número — por causa de "123A", "s/n"
+  complemento String?
+  bairro      String?
+  cidade      String?
+  uf          String?   // o estado, 2 letras (SP, RJ...)
+  rg               String?
+  dataNascimento   DateTime?
+  tomaMedicamento  Boolean   @default(false)
+  qualMedicamento  String?
+  matriculas Matricula[]
+}
+
+model Projeto {
+  id       Int      @id @default(autoincrement())
+  nome     String
+  ativo    Boolean  @default(true)
+  criadoEm DateTime @default(now())
+
+  turmas Turma[]
+}
+
+model Turma {
+  id        Int      @id @default(autoincrement())
+  nome      String
+  projetoId Int
+  projeto   Projeto  @relation(fields: [projetoId], references: [id])
+  criadoEm  DateTime @default(now())
+
+  matriculas Matricula[]
+    dias      DiaSemana[]
+  horario   String?
+}
+
+enum DiaSemana {
+  SEGUNDA
+  TERCA
+  QUARTA
+  QUINTA
+  SEXTA
+  SABADO
+  DOMINGO
+}
+
+model Matricula {
+  id         Int      @id @default(autoincrement())
+  usuarioId  String
+  usuario    Usuario  @relation(fields: [usuarioId], references: [id])
+  turmaId    Int
+  turma      Turma    @relation(fields: [turmaId], references: [id])
+  ativa      Boolean  @default(true)
+  dataInicio DateTime @default(now())
+exameMedico  ExameMedico  @default(AGUARDANDO)
+  pagamentos Pagamento[]
+}
+
+model Pagamento {
+  id             Int             @id @default(autoincrement())
+  matriculaId    Int
+  matricula      Matricula       @relation(fields: [matriculaId], references: [id])
+  valor          Decimal         @db.Decimal(10, 2)
+  mesReferencia  String
+  vencimento     DateTime
+  status         StatusPagamento @default(PENDENTE)
+  dataPagamento  DateTime?
+  formaPagamento FormaPagamento?
+  criadoEm       DateTime        @default(now())
+}

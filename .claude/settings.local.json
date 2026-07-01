@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(npx prisma *)",
+      "Bash(curl -s -X POST http://localhost:3001/usuarios -H \"Content-Type: application/json\" -d '{\"nome\":\"Maria\",\"cpf\":\"11111111111\",\"senha\":\"123456\",\"papel\":\"ASSOCIADO\"}')",
+      "Bash(curl -s -X POST http://localhost:3001/projetos -H \"Content-Type: application/json\" -d '{\"nome\":\"Projeto Dança\"}')",
+      "Bash(curl -s -X POST http://localhost:3001/turmas -H \"Content-Type: application/json\" -d '{\"nome\":\"Turma A\",\"projetoId\":1}')",
+      "Bash(curl -s http://localhost:3001/usuarios)",
+      "Bash(node --check middlewares/auth.js)",
+      "Bash(node --check index.js)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3001/usuarios)",
+      "Bash(curl -s -X POST http://localhost:3001/auth/login -H \"Content-Type: application/json\" -d '{\"cpf\":\"00000000000\",\"senha\":\"errada\"}')",
+      "Bash(curl -s -H \"Authorization: Bearer token-invalido\" -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3001/usuarios)"
+    ]
+  }
+}
