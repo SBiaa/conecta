@@ -8,6 +8,7 @@ const projetosRoutes = require('./routes/projetos')
 const turmasRoutes = require('./routes/turmas')
 const matriculasRoutes = require('./routes/matriculas')
 const pagamentosRoutes = require('./routes/pagamentos')
+const meRoutes = require('./routes/me')
 const { autenticar, exigirPapel } = require('./middlewares/auth')
 const app = express()
 
@@ -17,6 +18,7 @@ app.use(express.json())
 // ...
 app.use('/turmas', autenticar, exigirPapel('ADMIN'), turmasRoutes)
 app.use('/auth', authRoutes)
+app.use('/me', autenticar, meRoutes)
 // a linha do /associados foi REMOVIDA
 app.use('/usuarios', autenticar, exigirPapel('ADMIN'), usuariosRoutes)
 app.use('/projetos', autenticar, exigirPapel('ADMIN'), projetosRoutes)
