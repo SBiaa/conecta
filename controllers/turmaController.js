@@ -9,10 +9,17 @@ const listar = async (req, res) => {
       orderBy: { nome: 'asc' },
       include: {
         projeto: { select: { nome: true } },
-        _count: { select: { matriculas: true } }
+        matriculas: { select: { ativa: true } }
       }
     })
-    res.json(turmas)
+
+    const resultado = turmas.map(({ matriculas, ...turma }) => ({
+      ...turma,
+      ativas: matriculas.filter((m) => m.ativa).length,
+      inativas: matriculas.filter((m) => !m.ativa).length
+    }))
+
+    res.json(resultado)
   } catch (erro) {
     console.error(erro)
     res.status(500).json({ erro: 'Erro interno do servidor' })

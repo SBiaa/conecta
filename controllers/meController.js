@@ -36,4 +36,34 @@ const meusPagamentos = async (req, res) => {
   }
 }
 
-module.exports = { meusPagamentos }
+const meusMatriculas = async (req, res) => {
+  const usuarioId = req.usuario.id
+
+  try {
+    const matriculas = await prisma.matricula.findMany({
+      where: {
+        usuarioId,
+        ativa: true
+      },
+      select: {
+        id: true,
+        ativa: true,
+        exameMedico: true,
+        turma: {
+          select: {
+            nome: true,
+            horario: true,
+            dias: true,
+            projeto: { select: { nome: true } }
+          }
+        }
+      }
+    })
+    res.json(matriculas)
+  } catch (erro) {
+    console.error(erro)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
+module.exports = { meusPagamentos, meusMatriculas }
