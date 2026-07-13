@@ -1,7 +1,8 @@
 const express = require('express')
 const router = express.Router()
-const { meusPagamentos, meusMatriculas } = require('../controllers/meController')
+const { meusDados, meusPagamentos, meusMatriculas } = require('../controllers/meController')
 
+router.get('/', meusDados)
 router.get('/pagamentos', meusPagamentos)
 router.get('/matriculas', meusMatriculas)
 

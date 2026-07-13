@@ -1,5 +1,41 @@
 const prisma = require('../db')
 
+const meusDados = async (req, res) => {
+  const usuarioId = req.usuario.id
+
+  try {
+    const usuario = await prisma.usuario.findUnique({
+      where: { id: usuarioId },
+      select: {
+        id: true,
+        nome: true,
+        cpf: true,
+        email: true,
+        telefone: true,
+        papel: true,
+        rg: true,
+        dataNascimento: true,
+        cep: true,
+        logradouro: true,
+        numero: true,
+        complemento: true,
+        bairro: true,
+        cidade: true,
+        uf: true
+      }
+    })
+
+    if (!usuario) {
+      return res.status(404).json({ erro: 'Usuário não encontrado' })
+    }
+
+    res.json(usuario)
+  } catch (erro) {
+    console.error(erro)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
 const meusPagamentos = async (req, res) => {
   const usuarioId = req.usuario.id
 
@@ -66,4 +102,4 @@ const meusMatriculas = async (req, res) => {
   }
 }
 
-module.exports = { meusPagamentos, meusMatriculas }
+module.exports = { meusDados, meusPagamentos, meusMatriculas }

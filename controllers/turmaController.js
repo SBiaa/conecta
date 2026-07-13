@@ -1,11 +1,14 @@
 const prisma = require('../db')
 
 const listar = async (req, res) => {
-  const { projetoId } = req.query
+  const { projetoId, professorId } = req.query
 
   try {
     const turmas = await prisma.turma.findMany({
-      where: projetoId ? { projetoId: Number(projetoId) } : undefined,
+      where: {
+        ...(projetoId ? { projetoId: Number(projetoId) } : {}),
+        ...(professorId ? { professorId } : {})
+      },
       orderBy: { nome: 'asc' },
       include: {
         projeto: { select: { nome: true } },
@@ -27,7 +30,7 @@ const listar = async (req, res) => {
 }
 
 const criar = async (req, res) => {
-  const { nome, projetoId } = req.body
+  const { nome, projetoId, dias, horario, professorId } = req.body
 
   if (!nome || nome.trim() === '') {
     return res.status(400).json({ erro: 'O campo "nome" é obrigatório' })
@@ -39,7 +42,13 @@ const criar = async (req, res) => {
 
   try {
     const turma = await prisma.turma.create({
-      data: { nome: nome.trim(), projetoId: Number(projetoId) }
+      data: {
+        nome: nome.trim(),
+        projetoId: Number(projetoId),
+        dias: dias || [],
+        horario,
+        professorId: professorId || undefined
+      }
     })
     res.status(201).json(turma)
   } catch (erro) {
@@ -50,12 +59,17 @@ const criar = async (req, res) => {
 
 const atualizar = async (req, res) => {
   const { id } = req.params
-  const { nome } = req.body
+  const { nome, dias, horario, professorId } = req.body
 
   try {
     const turma = await prisma.turma.update({
       where: { id: Number(id) },
-      data: { nome }
+      data: {
+        nome,
+        dias,
+        horario,
+        ...(professorId !== undefined ? { professorId: professorId || null } : {})
+      }
     })
     res.json(turma)
   } catch (erro) {
