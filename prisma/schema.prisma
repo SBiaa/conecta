@@ -40,6 +40,12 @@ enum ExameMedico {
   AGUARDANDO
 }
 
+enum TipoPost {
+  GERAL
+  PROJETO
+  TURMA
+}
+
 model Usuario {
   id        String   @id @default(uuid())
   nome      String
@@ -64,6 +70,7 @@ cep         String?
   matriculas Matricula[]
   turmasComoProfessor Turma[]    @relation("TurmaProfessor")
   presencasRegistradas Presenca[] @relation("PresencaRegistradaPor")
+  posts Post[]
 }
 
 model Projeto {
@@ -73,6 +80,7 @@ model Projeto {
   criadoEm DateTime @default(now())
 
   turmas Turma[]
+  posts  Post[]
 }
 
 model Turma {
@@ -89,6 +97,7 @@ model Turma {
   professorId String?
   professor   Usuario? @relation("TurmaProfessor", fields: [professorId], references: [id])
   presencas   Presenca[]
+  posts       Post[]
 }
 
 enum DiaSemana {
@@ -140,4 +149,17 @@ model Pagamento {
   dataPagamento  DateTime?
   formaPagamento FormaPagamento?
   criadoEm       DateTime        @default(now())
+}
+
+model Post {
+  id        Int      @id @default(autoincrement())
+  conteudo  String
+  tipo      TipoPost
+  autorId   String
+  autor     Usuario  @relation(fields: [autorId], references: [id])
+  projetoId Int?
+  projeto   Projeto? @relation(fields: [projetoId], references: [id])
+  turmaId   Int?
+  turma     Turma?   @relation(fields: [turmaId], references: [id])
+  criadoEm  DateTime @default(now())
 }
