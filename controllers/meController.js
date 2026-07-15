@@ -87,10 +87,11 @@ const meusMatriculas = async (req, res) => {
         exameMedico: true,
         turma: {
           select: {
+            id: true,
             nome: true,
             horario: true,
             dias: true,
-            projeto: { select: { nome: true } }
+            projeto: { select: { id: true, nome: true } }
           }
         }
       }
