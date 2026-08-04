@@ -83,7 +83,7 @@ const criar = async (req, res) => {
 
 const atualizar = async (req, res) => {
   const { id } = req.params
-  const { nome, dias, horario, professorId } = req.body
+  const { nome, dias, horario, professorId, projetoId } = req.body
 
   try {
     const turma = await prisma.turma.update({
@@ -92,6 +92,7 @@ const atualizar = async (req, res) => {
         nome,
         dias,
         horario,
+        ...(projetoId !== undefined ? { projetoId: Number(projetoId) } : {}),
         ...(professorId !== undefined ? { professorId: professorId || null } : {})
       }
     })
