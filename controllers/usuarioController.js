@@ -236,4 +236,33 @@ const atualizar = async (req, res) => {
   }
 }
 
-module.exports = { listar, buscarPorId, criar, atualizar }
+const atualizarSenha = async (req, res) => {
+  const { id } = req.params
+  const { novaSenha } = req.body
+
+  const senhaFoiGerada = !novaSenha || novaSenha.trim() === ''
+  const senhaFinal = senhaFoiGerada ? gerarSenhaAmigavel() : novaSenha.trim()
+
+  if (!senhaFoiGerada && senhaFinal.length < 4) {
+    return res.status(400).json({ erro: 'A senha deve ter pelo menos 4 caracteres' })
+  }
+
+  try {
+    const senhaCriptografada = await bcrypt.hash(senhaFinal, 10)
+
+    await prisma.usuario.update({
+      where: { id },
+      data: { senha: senhaCriptografada }
+    })
+
+    res.json({ senha: senhaFinal })
+  } catch (erro) {
+    if (erro.code === 'P2025') {
+      return res.status(404).json({ erro: 'Usuário não encontrado' })
+    }
+    console.error(erro)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
+module.exports = { listar, buscarPorId, criar, atualizar, atualizarSenha }
