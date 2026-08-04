@@ -67,7 +67,26 @@
       "Bash(git push *)",
       "Bash(git -C conecta-web diff --stat)",
       "Bash(git -C conecta-web add \"app/\\(admin\\)/professores/[id]/page.tsx\" \"app/\\(admin\\)/projetos/[id]/turmas/page.tsx\")",
-      "Bash(git -C conecta-mobile status --short)"
+      "Bash(git -C conecta-mobile status --short)",
+      "Bash(git -C conecta-web diff --stat \"app/\\(admin\\)/matriculas/nova/page.tsx\")",
+      "Bash(git -C conecta-web add \"app/\\(admin\\)/perfil-admin/page.tsx\" \"app/\\(admin\\)/perfil-admin/perfil.module.css\")",
+      "Bash(git -C conecta-api diff --stat -- controllers/usuarioController.js)",
+      "Bash(npx eslint *)",
+      "Bash(node -c controllers/usuarioController.js)",
+      "Bash(git checkout *)",
+      "Bash(powershell -Command \"Get-ChildItem -Path 'D:\\\\dev\\\\conecta\\\\conecta-web\\\\app\\\\\\(admin\\)\\\\turmas' -Recurse -Force\")",
+      "Bash(dir \"D:\\\\dev\\\\conecta\\\\conecta-web\\\\app\\\\\\(admin\\)\\\\turmas\")",
+      "Bash(powershell -Command \"Get-ChildItem -Path 'D:\\\\dev\\\\conecta\\\\conecta-web\\\\app\\\\\\(admin\\)\\\\projetos' -Recurse -Force | Select-Object FullName\")",
+      "Bash(git -C conecta-api add controllers/turmaController.js)",
+      "Bash(git -C conecta-web add \"app/\\(admin\\)/inicio-admin/inicio-admin.module.css\" \"app/\\(admin\\)/inicio-admin/page.tsx\" \"app/\\(admin\\)/turmas/[id]/alunas/alunas.module.css\" \"app/\\(admin\\)/turmas/[id]/alunas/page.tsx\" \"app/\\(admin\\)/turmas/[id]/editar\")",
+      "Bash(git -C conecta-web checkout main)",
+      "Bash(git -C conecta-web merge --ff-only origin/main)",
+      "Bash(git -C conecta-web log --oneline -3)",
+      "Bash(git -C conecta-web cherry-pick feature/grade-semanal-turmas)",
+      "Bash(git -C conecta-api log --oneline -3)",
+      "Bash(git -C conecta-web add \"app/\\(admin\\)/inicio-admin/inicio-admin.module.css\" \"app/\\(admin\\)/inicio-admin/page.tsx\")",
+      "Bash(node matricularAlunasVivaBem.js)",
+      "Bash(grep \"Não encontrada\" /tmp/matricula_dryrun.log)"
     ]
   }
 }
