@@ -1,0 +1,4 @@
+[submodule "conecta-api"]
+	path = conecta-api
+	url = https://github.com/SBiaa/conecta.git
+	branch = main
