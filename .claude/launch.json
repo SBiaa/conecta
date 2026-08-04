@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "conecta-api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "conecta-api", "run", "dev"],
+      "port": 3001
+    },
+    {
+      "name": "conecta-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "conecta-web", "run", "dev"],
+      "port": 3000
+    }
+  ]
+}
