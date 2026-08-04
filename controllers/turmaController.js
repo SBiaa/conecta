@@ -12,6 +12,7 @@ const listar = async (req, res) => {
       orderBy: { nome: 'asc' },
       include: {
         projeto: { select: { nome: true } },
+        professor: { select: { id: true, nome: true } },
         matriculas: { select: { ativa: true } }
       }
     })
@@ -23,6 +24,29 @@ const listar = async (req, res) => {
     }))
 
     res.json(resultado)
+  } catch (erro) {
+    console.error(erro)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
+const buscarPorId = async (req, res) => {
+  const { id } = req.params
+
+  try {
+    const turma = await prisma.turma.findUnique({
+      where: { id: Number(id) },
+      include: {
+        projeto: { select: { id: true, nome: true } },
+        professor: { select: { id: true, nome: true } }
+      }
+    })
+
+    if (!turma) {
+      return res.status(404).json({ erro: 'Turma não encontrada' })
+    }
+
+    res.json(turma)
   } catch (erro) {
     console.error(erro)
     res.status(500).json({ erro: 'Erro interno do servidor' })
@@ -130,4 +154,4 @@ const matriculasDaTurma = async (req, res) => {
   }
 }
 
-module.exports = { listar, criar, atualizar, matriculasDaTurma }
+module.exports = { listar, buscarPorId, criar, atualizar, matriculasDaTurma }

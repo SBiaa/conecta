@@ -4,6 +4,7 @@ const turmaController = require('../controllers/turmaController')
 
 router.get('/', turmaController.listar)
 router.post('/', turmaController.criar)
+router.get('/:id', turmaController.buscarPorId)
 router.patch('/:id', turmaController.atualizar)
 router.get('/:id/matriculas', turmaController.matriculasDaTurma)
 
