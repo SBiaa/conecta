@@ -199,7 +199,14 @@ const atualizar = async (req, res) => {
     rg,
     dataNascimento,
     tomaMedicamento,
-    qualMedicamento
+    qualMedicamento,
+    cep,
+    logradouro,
+    numero,
+    complemento,
+    bairro,
+    cidade,
+    uf
   } = req.body
 
   try {
@@ -213,7 +220,14 @@ const atualizar = async (req, res) => {
         rg,
         dataNascimento: dataNascimento ? new Date(dataNascimento) : undefined,
         tomaMedicamento,
-        qualMedicamento
+        qualMedicamento,
+        cep,
+        logradouro,
+        numero,
+        complemento,
+        bairro,
+        cidade,
+        uf
       }
     })
 
