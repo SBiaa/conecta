@@ -5,10 +5,20 @@ const listar = async (req, res) => {
     const projetos = await prisma.projeto.findMany({
       orderBy: { nome: 'asc' },
       include: {
-        _count: { select: { turmas: true } }
+        _count: { select: { turmas: true } },
+        turmas: { select: { matriculas: { select: { ativa: true } } } }
       }
     })
-    res.json(projetos)
+
+    const resultado = projetos.map(({ turmas, ...projeto }) => ({
+      ...projeto,
+      alunasAtivas: turmas.reduce(
+        (acc, turma) => acc + turma.matriculas.filter((m) => m.ativa).length,
+        0
+      )
+    }))
+
+    res.json(resultado)
   } catch (erro) {
     console.error(erro)
     res.status(500).json({ erro: 'Erro interno do servidor' })
