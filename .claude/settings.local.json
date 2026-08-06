@@ -72,7 +72,9 @@
       "Bash(curl -s -o /dev/null -w \"GET /posts/feed -> %{http_code}\\\\n\" http://localhost:3001/posts/feed)",
       "Bash(node -c controllers/projetoController.js)",
       "Bash(netstat -ano)",
-      "Bash(mkdir -p \"D:\\\\dev\\\\conecta\\\\conecta-web\\\\app\\\\\\(admin\\)\\\\frequencia\\\\[id]\")"
+      "Bash(mkdir -p \"D:\\\\dev\\\\conecta\\\\conecta-web\\\\app\\\\\\(admin\\)\\\\frequencia\\\\[id]\")",
+      "Bash(npx eslint *)",
+      "Bash(git stash *)"
     ]
   }
 }
