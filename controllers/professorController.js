@@ -1,21 +1,37 @@
 const prisma = require('../db')
 
+const DIA_SEMANA_POR_INDICE = ['DOMINGO', 'SEGUNDA', 'TERCA', 'QUARTA', 'QUINTA', 'SEXTA', 'SABADO']
+
+function dataHojeISO() {
+  const agora = new Date()
+  const ano = agora.getFullYear()
+  const mes = String(agora.getMonth() + 1).padStart(2, '0')
+  const dia = String(agora.getDate()).padStart(2, '0')
+  return `${ano}-${mes}-${dia}`
+}
+
 const minhasTurmas = async (req, res) => {
   const professorId = req.usuario.id
 
   try {
+    const hoje = new Date(dataHojeISO())
+    const diaHoje = DIA_SEMANA_POR_INDICE[new Date().getDay()]
+
     const turmas = await prisma.turma.findMany({
       where: { professorId },
       orderBy: { nome: 'asc' },
       include: {
         projeto: { select: { nome: true } },
-        matriculaTurmas: { where: { matricula: { ativa: true } }, select: { id: true } }
+        matriculaTurmas: { where: { matricula: { ativa: true } }, select: { id: true } },
+        presencas: { where: { data: hoje }, select: { id: true }, take: 1 }
       }
     })
 
-    const resultado = turmas.map(({ matriculaTurmas, ...turma }) => ({
+    const resultado = turmas.map(({ matriculaTurmas, presencas, ...turma }) => ({
       ...turma,
-      totalAlunas: matriculaTurmas.length
+      totalAlunas: matriculaTurmas.length,
+      temAulaHoje: turma.dias.includes(diaHoje),
+      chamadaFeitaHoje: presencas.length > 0
     }))
 
     res.json(resultado)

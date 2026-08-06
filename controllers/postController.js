@@ -115,9 +115,12 @@ const feed = async (req, res) => {
       }
     }
 
+    const limite = req.query.limit ? Number(req.query.limit) : undefined
+
     const posts = await prisma.post.findMany({
       where,
       orderBy: { criadoEm: 'desc' },
+      ...(limite ? { take: limite } : {}),
       select: {
         id: true,
         conteudo: true,
