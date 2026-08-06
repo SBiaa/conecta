@@ -67,7 +67,12 @@
       "Bash(git push *)",
       "Bash(git -C conecta-web diff --stat)",
       "Bash(git -C conecta-web add \"app/\\(admin\\)/professores/[id]/page.tsx\" \"app/\\(admin\\)/projetos/[id]/turmas/page.tsx\")",
-      "Bash(git -C conecta-mobile status --short)"
+      "Bash(git -C conecta-mobile status --short)",
+      "Bash(curl -s -o /dev/null -w \"GET /feed -> %{http_code}\\\\n\" http://localhost:3001/feed)",
+      "Bash(curl -s -o /dev/null -w \"GET /posts/feed -> %{http_code}\\\\n\" http://localhost:3001/posts/feed)",
+      "Bash(node -c controllers/projetoController.js)",
+      "Bash(netstat -ano)",
+      "Bash(mkdir -p \"D:\\\\dev\\\\conecta\\\\conecta-web\\\\app\\\\\\(admin\\)\\\\frequencia\\\\[id]\")"
     ]
   }
 }
