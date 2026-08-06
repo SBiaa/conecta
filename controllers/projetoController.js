@@ -6,14 +6,14 @@ const listar = async (req, res) => {
       orderBy: { nome: 'asc' },
       include: {
         _count: { select: { turmas: true } },
-        turmas: { select: { matriculas: { select: { ativa: true } } } }
+        turmas: { select: { matriculaTurmas: { select: { matricula: { select: { ativa: true } } } } } }
       }
     })
 
     const resultado = projetos.map(({ turmas, ...projeto }) => ({
       ...projeto,
       alunasAtivas: turmas.reduce(
-        (acc, turma) => acc + turma.matriculas.filter((m) => m.ativa).length,
+        (acc, turma) => acc + turma.matriculaTurmas.filter((mt) => mt.matricula.ativa).length,
         0
       )
     }))

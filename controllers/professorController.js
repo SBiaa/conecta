@@ -9,13 +9,13 @@ const minhasTurmas = async (req, res) => {
       orderBy: { nome: 'asc' },
       include: {
         projeto: { select: { nome: true } },
-        matriculas: { where: { ativa: true }, select: { id: true } }
+        matriculaTurmas: { where: { matricula: { ativa: true } }, select: { id: true } }
       }
     })
 
-    const resultado = turmas.map(({ matriculas, ...turma }) => ({
+    const resultado = turmas.map(({ matriculaTurmas, ...turma }) => ({
       ...turma,
-      totalAlunas: matriculas.length
+      totalAlunas: matriculaTurmas.length
     }))
 
     res.json(resultado)
@@ -48,7 +48,7 @@ const obterChamada = async (req, res) => {
 
   try {
     const matriculas = await prisma.matricula.findMany({
-      where: { turmas: { some: { id: turmaId } }, ativa: true },
+      where: { turmasVinculadas: { some: { turmaId } }, ativa: true },
       orderBy: { usuario: { nome: 'asc' } },
       select: { id: true, usuario: { select: { id: true, nome: true } } }
     })
@@ -124,7 +124,7 @@ const frequenciaTurma = async (req, res) => {
 
   try {
     const matriculas = await prisma.matricula.findMany({
-      where: { turmas: { some: { id: turmaId } }, ativa: true },
+      where: { turmasVinculadas: { some: { turmaId } }, ativa: true },
       orderBy: { usuario: { nome: 'asc' } },
       select: { id: true, usuario: { select: { nome: true } } }
     })

@@ -55,17 +55,24 @@ const meusPagamentos = async (req, res) => {
         dataPagamento: true,
         matricula: {
           select: {
-            turmas: {
+            turmasVinculadas: {
               select: {
-                nome: true,
-                projeto: { select: { nome: true } }
+                dias: true,
+                turma: { select: { nome: true, projeto: { select: { nome: true } } } }
               }
             }
           }
         }
       }
     })
-    res.json(pagamentos)
+    res.json(
+      pagamentos.map(({ matricula, ...pagamento }) => ({
+        ...pagamento,
+        matricula: {
+          turmas: matricula.turmasVinculadas.map((vinculo) => ({ ...vinculo.turma, diasContratados: vinculo.dias }))
+        }
+      }))
+    )
   } catch (erro) {
     console.error(erro)
     res.status(500).json({ erro: 'Erro interno do servidor' })
@@ -86,18 +93,28 @@ const meusMatriculas = async (req, res) => {
         ativa: true,
         exameMedico: true,
         frequenciaSemanal: true,
-        turmas: {
+        turmasVinculadas: {
           select: {
-            id: true,
-            nome: true,
-            horario: true,
             dias: true,
-            projeto: { select: { id: true, nome: true } }
+            turma: {
+              select: {
+                id: true,
+                nome: true,
+                horario: true,
+                dias: true,
+                projeto: { select: { id: true, nome: true } }
+              }
+            }
           }
         }
       }
     })
-    res.json(matriculas)
+    res.json(
+      matriculas.map(({ turmasVinculadas, ...matricula }) => ({
+        ...matricula,
+        turmas: turmasVinculadas.map((vinculo) => ({ ...vinculo.turma, diasContratados: vinculo.dias }))
+      }))
+    )
   } catch (erro) {
     console.error(erro)
     res.status(500).json({ erro: 'Erro interno do servidor' })

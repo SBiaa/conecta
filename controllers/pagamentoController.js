@@ -1,6 +1,24 @@
 const prisma = require('../db')
 const { PLANOS } = require('../config/planos')
 
+const SELECT_TURMAS_MATRICULA = {
+  usuario: { select: { nome: true } },
+  turmasVinculadas: {
+    select: {
+      dias: true,
+      turma: { select: { nome: true, projeto: { select: { nome: true } } } }
+    }
+  }
+}
+
+function reshapeMatricula(matricula) {
+  const { turmasVinculadas, ...resto } = matricula
+  return {
+    ...resto,
+    turmas: turmasVinculadas.map((vinculo) => ({ ...vinculo.turma, diasContratados: vinculo.dias }))
+  }
+}
+
 const listar = async (req, res) => {
   const { mes, status, projetoId, usuarioId } = req.query
 
@@ -13,7 +31,7 @@ const listar = async (req, res) => {
       where: {
         ...(mes ? { mesReferencia: mes } : {}),
         ...(status ? { status } : {}),
-        ...(projetoId ? { matricula: { turmas: { some: { projetoId: Number(projetoId) } } } } : {}),
+        ...(projetoId ? { matricula: { turmasVinculadas: { some: { turma: { projetoId: Number(projetoId) } } } } } : {}),
         ...(usuarioId ? { matricula: { usuarioId } } : {})
       },
       orderBy: usuarioId
@@ -26,20 +44,10 @@ const listar = async (req, res) => {
         mesReferencia: true,
         vencimento: true,
         formaPagamento: true,
-        matricula: {
-          select: {
-            usuario: { select: { nome: true } },
-            turmas: {
-              select: {
-                nome: true,
-                projeto: { select: { nome: true } }
-              }
-            }
-          }
-        }
+        matricula: { select: SELECT_TURMAS_MATRICULA }
       }
     })
-    res.json(pagamentos)
+    res.json(pagamentos.map((p) => ({ ...p, matricula: reshapeMatricula(p.matricula) })))
   } catch (erro) {
     console.error(erro)
     res.status(500).json({ erro: 'Erro interno do servidor' })
@@ -114,7 +122,7 @@ const gerarMes = async (req, res) => {
     const matriculas = await prisma.matricula.findMany({
       where: {
         ativa: true,
-        turmas: { some: { projetoId: Number(projetoId) } }
+        turmasVinculadas: { some: { turma: { projetoId: Number(projetoId) } } }
       },
       select: { id: true, frequenciaSemanal: true, usuario: { select: { nome: true } } }
     })
@@ -165,7 +173,7 @@ const atrasados = async (req, res) => {
       where: {
         status: 'PENDENTE',
         vencimento: { lt: new Date() },
-        ...(projetoId ? { matricula: { turmas: { some: { projetoId: Number(projetoId) } } } } : {})
+        ...(projetoId ? { matricula: { turmasVinculadas: { some: { turma: { projetoId: Number(projetoId) } } } } } : {})
       },
       orderBy: { vencimento: 'asc' },
       select: {
@@ -173,20 +181,10 @@ const atrasados = async (req, res) => {
         valor: true,
         vencimento: true,
         mesReferencia: true,
-        matricula: {
-          select: {
-            usuario: { select: { nome: true } },
-            turmas: {
-              select: {
-                nome: true,
-                projeto: { select: { nome: true } }
-              }
-            }
-          }
-        }
+        matricula: { select: SELECT_TURMAS_MATRICULA }
       }
     })
-    res.json(pagamentos)
+    res.json(pagamentos.map((p) => ({ ...p, matricula: reshapeMatricula(p.matricula) })))
   } catch (erro) {
     console.error(erro)
     res.status(500).json({ erro: 'Erro interno do servidor' })

@@ -88,13 +88,18 @@ const buscarPorId = async (req, res) => {
             dataInicio: true,
             exameMedico: true,
             frequenciaSemanal: true,
-            turmas: {
+            turmasVinculadas: {
               select: {
-                id: true,
-                nome: true,
-                horario: true,
                 dias: true,
-                projeto: { select: { id: true, nome: true } }
+                turma: {
+                  select: {
+                    id: true,
+                    nome: true,
+                    horario: true,
+                    dias: true,
+                    projeto: { select: { id: true, nome: true } }
+                  }
+                }
               }
             }
           }
@@ -106,7 +111,13 @@ const buscarPorId = async (req, res) => {
       return res.status(404).json({ erro: 'Usuário não encontrado' })
     }
 
-    res.json(usuario)
+    res.json({
+      ...usuario,
+      matriculas: usuario.matriculas.map(({ turmasVinculadas, ...matricula }) => ({
+        ...matricula,
+        turmas: turmasVinculadas.map((vinculo) => ({ ...vinculo.turma, diasContratados: vinculo.dias }))
+      }))
+    })
   } catch (erro) {
     console.error(erro)
     res.status(500).json({ erro: 'Erro interno do servidor' })

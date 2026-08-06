@@ -31,7 +31,7 @@ const criar = async (req, res) => {
           projetoId: Number(projetoId),
           OR: [
             { professorId: autorId },
-            { matriculas: { some: { usuarioId: autorId, ativa: true } } }
+            { matriculaTurmas: { some: { matricula: { usuarioId: autorId, ativa: true } } } }
           ]
         }
       })
@@ -47,7 +47,7 @@ const criar = async (req, res) => {
           id: Number(turmaId),
           OR: [
             { professorId: autorId },
-            { matriculas: { some: { usuarioId: autorId, ativa: true } } }
+            { matriculaTurmas: { some: { matricula: { usuarioId: autorId, ativa: true } } } }
           ]
         }
       })
@@ -90,7 +90,7 @@ const feed = async (req, res) => {
             usuarioId: req.usuario.id,
             ativa: true
           },
-          include: { turmas: true }
+          include: { turmasVinculadas: { include: { turma: true } } }
         }),
         prisma.turma.findMany({
           where: { professorId: req.usuario.id }
@@ -98,11 +98,11 @@ const feed = async (req, res) => {
       ])
 
       const turmaIds = [
-        ...matriculas.flatMap((m) => m.turmas.map((t) => t.id)),
+        ...matriculas.flatMap((m) => m.turmasVinculadas.map((mt) => mt.turma.id)),
         ...turmasComoProfessor.map((t) => t.id)
       ]
       const projetoIds = [
-        ...matriculas.flatMap((m) => m.turmas.map((t) => t.projetoId)),
+        ...matriculas.flatMap((m) => m.turmasVinculadas.map((mt) => mt.turma.projetoId)),
         ...turmasComoProfessor.map((t) => t.projetoId)
       ]
 

@@ -13,14 +13,14 @@ const listar = async (req, res) => {
       include: {
         projeto: { select: { nome: true } },
         professor: { select: { id: true, nome: true } },
-        matriculas: { select: { ativa: true } }
+        matriculaTurmas: { select: { matricula: { select: { ativa: true } } } }
       }
     })
 
-    const resultado = turmas.map(({ matriculas, ...turma }) => ({
+    const resultado = turmas.map(({ matriculaTurmas, ...turma }) => ({
       ...turma,
-      ativas: matriculas.filter((m) => m.ativa).length,
-      inativas: matriculas.filter((m) => !m.ativa).length
+      ativas: matriculaTurmas.filter((mt) => mt.matricula.ativa).length,
+      inativas: matriculaTurmas.filter((mt) => !mt.matricula.ativa).length
     }))
 
     res.json(resultado)
@@ -113,7 +113,7 @@ const apagar = async (req, res) => {
     const turma = await prisma.turma.findUnique({
       where: { id: Number(id) },
       include: {
-        matriculas: { select: { id: true } },
+        matriculaTurmas: { select: { id: true } },
         presencas: { select: { id: true } }
       }
     })
@@ -122,7 +122,7 @@ const apagar = async (req, res) => {
       return res.status(404).json({ erro: 'Turma não encontrada' })
     }
 
-    if (turma.matriculas.length > 0 || turma.presencas.length > 0) {
+    if (turma.matriculaTurmas.length > 0 || turma.presencas.length > 0) {
       return res.status(409).json({
         erro: 'Não é possível excluir a turma pois há matrículas ou presenças vinculadas a ela'
       })
@@ -144,7 +144,7 @@ const matriculasDaTurma = async (req, res) => {
   const { mes, ativa } = req.query
 
   const where = {
-    turmas: { some: { id: Number(id) } },
+    turmasVinculadas: { some: { turmaId: Number(id) } },
     ...(ativa === 'true' ? { ativa: true } : {})
   }
 
