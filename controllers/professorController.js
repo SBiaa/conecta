@@ -48,7 +48,7 @@ const obterChamada = async (req, res) => {
 
   try {
     const matriculas = await prisma.matricula.findMany({
-      where: { turmaId, ativa: true },
+      where: { turmas: { some: { id: turmaId } }, ativa: true },
       orderBy: { usuario: { nome: 'asc' } },
       select: { id: true, usuario: { select: { id: true, nome: true } } }
     })
@@ -124,7 +124,7 @@ const frequenciaTurma = async (req, res) => {
 
   try {
     const matriculas = await prisma.matricula.findMany({
-      where: { turmaId, ativa: true },
+      where: { turmas: { some: { id: turmaId } }, ativa: true },
       orderBy: { usuario: { nome: 'asc' } },
       select: { id: true, usuario: { select: { nome: true } } }
     })

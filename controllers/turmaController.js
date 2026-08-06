@@ -106,12 +106,45 @@ const atualizar = async (req, res) => {
   }
 }
 
+const apagar = async (req, res) => {
+  const { id } = req.params
+
+  try {
+    const turma = await prisma.turma.findUnique({
+      where: { id: Number(id) },
+      include: {
+        matriculas: { select: { id: true } },
+        presencas: { select: { id: true } }
+      }
+    })
+
+    if (!turma) {
+      return res.status(404).json({ erro: 'Turma não encontrada' })
+    }
+
+    if (turma.matriculas.length > 0 || turma.presencas.length > 0) {
+      return res.status(409).json({
+        erro: 'Não é possível excluir a turma pois há matrículas ou presenças vinculadas a ela'
+      })
+    }
+
+    await prisma.turma.delete({ where: { id: Number(id) } })
+    res.status(200).json({ ok: true })
+  } catch (erro) {
+    if (erro.code === 'P2025') {
+      return res.status(404).json({ erro: 'Turma não encontrada' })
+    }
+    console.error(erro)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
 const matriculasDaTurma = async (req, res) => {
   const { id } = req.params
   const { mes, ativa } = req.query
 
   const where = {
-    turmaId: Number(id),
+    turmas: { some: { id: Number(id) } },
     ...(ativa === 'true' ? { ativa: true } : {})
   }
 
@@ -155,4 +188,4 @@ const matriculasDaTurma = async (req, res) => {
   }
 }
 
-module.exports = { listar, buscarPorId, criar, atualizar, matriculasDaTurma }
+module.exports = { listar, buscarPorId, criar, atualizar, apagar, matriculasDaTurma }

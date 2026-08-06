@@ -1,4 +1,5 @@
 const prisma = require('../db')
+const { PLANOS } = require('../config/planos')
 
 const listar = async (req, res) => {
   const { mes, status, projetoId, usuarioId } = req.query
@@ -12,16 +13,12 @@ const listar = async (req, res) => {
       where: {
         ...(mes ? { mesReferencia: mes } : {}),
         ...(status ? { status } : {}),
-        ...(projetoId ? { matricula: { turma: { projetoId: Number(projetoId) } } } : {}),
+        ...(projetoId ? { matricula: { turmas: { some: { projetoId: Number(projetoId) } } } } : {}),
         ...(usuarioId ? { matricula: { usuarioId } } : {})
       },
       orderBy: usuarioId
         ? [{ mesReferencia: 'desc' }]
-        : [
-            { matricula: { turma: { projeto: { nome: 'asc' } } } },
-            { matricula: { turma: { nome: 'asc' } } },
-            { matricula: { usuario: { nome: 'asc' } } }
-          ],
+        : [{ matricula: { usuario: { nome: 'asc' } } }],
       select: {
         id: true,
         valor: true,
@@ -32,7 +29,7 @@ const listar = async (req, res) => {
         matricula: {
           select: {
             usuario: { select: { nome: true } },
-            turma: {
+            turmas: {
               select: {
                 nome: true,
                 projeto: { select: { nome: true } }
@@ -99,7 +96,7 @@ const marcarComoPaga = async (req, res) => {
 }
 
 const gerarMes = async (req, res) => {
-  const { projetoId, mesReferencia, valor, vencimento } = req.body
+  const { projetoId, mesReferencia, vencimento } = req.body
 
   if (!projetoId) {
     return res.status(400).json({ erro: 'O campo "projetoId" é obrigatório' })
@@ -107,10 +104,6 @@ const gerarMes = async (req, res) => {
 
   if (!mesReferencia || mesReferencia.trim() === '') {
     return res.status(400).json({ erro: 'O campo "mesReferencia" é obrigatório' })
-  }
-
-  if (!valor) {
-    return res.status(400).json({ erro: 'O campo "valor" é obrigatório' })
   }
 
   if (!vencimento) {
@@ -121,9 +114,9 @@ const gerarMes = async (req, res) => {
     const matriculas = await prisma.matricula.findMany({
       where: {
         ativa: true,
-        turma: { projetoId: Number(projetoId) }
+        turmas: { some: { projetoId: Number(projetoId) } }
       },
-      select: { id: true }
+      select: { id: true, frequenciaSemanal: true, usuario: { select: { nome: true } } }
     })
 
     const existentes = await prisma.pagamento.findMany({
@@ -137,11 +130,17 @@ const gerarMes = async (req, res) => {
 
     const matriculasParaGerar = matriculas.filter((matricula) => !matriculasComPagamento.has(matricula.id))
 
+    const pendentes = matriculasParaGerar
+      .filter((matricula) => !PLANOS[matricula.frequenciaSemanal])
+      .map((matricula) => ({ matriculaId: matricula.id, nome: matricula.usuario.nome }))
+
+    const matriculasComValor = matriculasParaGerar.filter((matricula) => PLANOS[matricula.frequenciaSemanal])
+
     const criados = await prisma.$transaction(
-      matriculasParaGerar.map((matricula) =>
+      matriculasComValor.map((matricula) =>
         prisma.pagamento.create({
           data: {
-            valor,
+            valor: PLANOS[matricula.frequenciaSemanal],
             mesReferencia,
             vencimento: new Date(vencimento),
             status: 'PENDENTE',
@@ -151,7 +150,7 @@ const gerarMes = async (req, res) => {
       )
     )
 
-    res.status(201).json(criados)
+    res.status(201).json({ criados, pendentes })
   } catch (erro) {
     console.error(erro)
     res.status(500).json({ erro: 'Erro interno do servidor' })
@@ -166,7 +165,7 @@ const atrasados = async (req, res) => {
       where: {
         status: 'PENDENTE',
         vencimento: { lt: new Date() },
-        ...(projetoId ? { matricula: { turma: { projetoId: Number(projetoId) } } } : {})
+        ...(projetoId ? { matricula: { turmas: { some: { projetoId: Number(projetoId) } } } } : {})
       },
       orderBy: { vencimento: 'asc' },
       select: {
@@ -177,7 +176,7 @@ const atrasados = async (req, res) => {
         matricula: {
           select: {
             usuario: { select: { nome: true } },
-            turma: {
+            turmas: {
               select: {
                 nome: true,
                 projeto: { select: { nome: true } }

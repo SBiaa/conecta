@@ -1,16 +1,40 @@
 const prisma = require('../db')
+const { PLANOS } = require('../config/planos')
 
 const EXAMES_MEDICOS_VALIDOS = ['APTO', 'NAO_APTO', 'AGUARDANDO']
+const FREQUENCIAS_VALIDAS = Object.keys(PLANOS).map(Number)
+
+function validarTurmasEFrequencia(turmas, frequenciaSemanal) {
+  if (!FREQUENCIAS_VALIDAS.includes(Number(frequenciaSemanal))) {
+    return `O campo "frequenciaSemanal" deve ser um de: ${FREQUENCIAS_VALIDAS.join(', ')}`
+  }
+
+  if (turmas.length === 0) {
+    return 'Nenhuma das turmas informadas foi encontrada'
+  }
+
+  const projetoIds = new Set(turmas.map((turma) => turma.projetoId))
+  if (projetoIds.size > 1) {
+    return 'Todas as turmas escolhidas devem ser do mesmo projeto'
+  }
+
+  const totalDias = turmas.reduce((soma, turma) => soma + turma.dias.length, 0)
+  if (totalDias !== Number(frequenciaSemanal)) {
+    return `A soma de dias das turmas escolhidas (${totalDias}) não bate com a frequência do plano (${frequenciaSemanal})`
+  }
+
+  return null
+}
 
 const criar = async (req, res) => {
-  const { usuarioId, turmaId, exameMedico } = req.body
+  const { usuarioId, turmaIds, frequenciaSemanal, exameMedico } = req.body
 
   if (!usuarioId) {
     return res.status(400).json({ erro: 'O campo "usuarioId" é obrigatório' })
   }
 
-  if (!turmaId) {
-    return res.status(400).json({ erro: 'O campo "turmaId" é obrigatório' })
+  if (!Array.isArray(turmaIds) || turmaIds.length === 0) {
+    return res.status(400).json({ erro: 'O campo "turmaIds" é obrigatório e deve ser uma lista com ao menos 1 turma' })
   }
 
   if (exameMedico && !EXAMES_MEDICOS_VALIDOS.includes(exameMedico)) {
@@ -20,10 +44,21 @@ const criar = async (req, res) => {
   }
 
   try {
+    const turmas = await prisma.turma.findMany({
+      where: { id: { in: turmaIds.map(Number) } },
+      select: { id: true, projetoId: true, dias: true }
+    })
+
+    const erroValidacao = validarTurmasEFrequencia(turmas, frequenciaSemanal)
+    if (erroValidacao) {
+      return res.status(400).json({ erro: erroValidacao })
+    }
+
     const matricula = await prisma.matricula.create({
       data: {
         usuarioId,
-        turmaId: Number(turmaId),
+        frequenciaSemanal: Number(frequenciaSemanal),
+        turmas: { connect: turmas.map((turma) => ({ id: turma.id })) },
         ...(exameMedico ? { exameMedico } : {})
       }
     })
@@ -36,7 +71,7 @@ const criar = async (req, res) => {
 
 const atualizar = async (req, res) => {
   const { id } = req.params
-  const { ativa, exameMedico, turmaId } = req.body
+  const { ativa, exameMedico, turmaIds, frequenciaSemanal } = req.body
 
   if (exameMedico && !EXAMES_MEDICOS_VALIDOS.includes(exameMedico)) {
     return res.status(400).json({
@@ -44,28 +79,36 @@ const atualizar = async (req, res) => {
     })
   }
 
+  const mudandoTurmas = turmaIds !== undefined || frequenciaSemanal !== undefined
+
   try {
-    if (turmaId) {
+    let turmas = null
+
+    if (mudandoTurmas) {
+      if (!Array.isArray(turmaIds) || turmaIds.length === 0) {
+        return res.status(400).json({ erro: 'O campo "turmaIds" deve ser uma lista com ao menos 1 turma' })
+      }
+
       const matriculaAtual = await prisma.matricula.findUnique({
-        where: { id: Number(id) },
-        select: { turma: { select: { projetoId: true } } }
+        where: { id: Number(id) }
       })
 
       if (!matriculaAtual) {
         return res.status(404).json({ erro: 'Matrícula não encontrada' })
       }
 
-      const turmaNova = await prisma.turma.findUnique({
-        where: { id: Number(turmaId) },
-        select: { projetoId: true }
+      turmas = await prisma.turma.findMany({
+        where: { id: { in: turmaIds.map(Number) } },
+        select: { id: true, projetoId: true, dias: true }
       })
 
-      if (!turmaNova) {
-        return res.status(404).json({ erro: 'Turma não encontrada' })
-      }
+      const frequenciaFinal = frequenciaSemanal !== undefined
+        ? frequenciaSemanal
+        : matriculaAtual.frequenciaSemanal
 
-      if (turmaNova.projetoId !== matriculaAtual.turma.projetoId) {
-        return res.status(400).json({ erro: 'A nova turma deve ser do mesmo projeto' })
+      const erroValidacao = validarTurmasEFrequencia(turmas, frequenciaFinal)
+      if (erroValidacao) {
+        return res.status(400).json({ erro: erroValidacao })
       }
     }
 
@@ -74,7 +117,8 @@ const atualizar = async (req, res) => {
       data: {
         ...(ativa !== undefined ? { ativa } : {}),
         ...(exameMedico ? { exameMedico } : {}),
-        ...(turmaId ? { turmaId: Number(turmaId) } : {})
+        ...(frequenciaSemanal !== undefined ? { frequenciaSemanal: Number(frequenciaSemanal) } : {}),
+        ...(turmas ? { turmas: { set: turmas.map((turma) => ({ id: turma.id })) } } : {})
       }
     })
     res.json(matricula)

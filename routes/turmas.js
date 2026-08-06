@@ -6,6 +6,7 @@ router.get('/', turmaController.listar)
 router.post('/', turmaController.criar)
 router.get('/:id', turmaController.buscarPorId)
 router.patch('/:id', turmaController.atualizar)
+router.delete('/:id', turmaController.apagar)
 router.get('/:id/matriculas', turmaController.matriculasDaTurma)
 
 module.exports = router

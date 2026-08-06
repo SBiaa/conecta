@@ -111,13 +111,13 @@ enum DiaSemana {
 }
 
 model Matricula {
-  id         Int      @id @default(autoincrement())
-  usuarioId  String
-  usuario    Usuario  @relation(fields: [usuarioId], references: [id])
-  turmaId    Int
-  turma      Turma    @relation(fields: [turmaId], references: [id])
-  ativa      Boolean  @default(true)
-  dataInicio DateTime @default(now())
+  id                Int       @id @default(autoincrement())
+  usuarioId         String
+  usuario           Usuario   @relation(fields: [usuarioId], references: [id])
+  turmas            Turma[]
+  frequenciaSemanal Int?
+  ativa             Boolean   @default(true)
+  dataInicio        DateTime  @default(now())
 exameMedico  ExameMedico  @default(AGUARDANDO)
   pagamentos Pagamento[]
   presencas  Presenca[]

@@ -87,7 +87,8 @@ const buscarPorId = async (req, res) => {
             ativa: true,
             dataInicio: true,
             exameMedico: true,
-            turma: {
+            frequenciaSemanal: true,
+            turmas: {
               select: {
                 id: true,
                 nome: true,

@@ -55,7 +55,7 @@ const meusPagamentos = async (req, res) => {
         dataPagamento: true,
         matricula: {
           select: {
-            turma: {
+            turmas: {
               select: {
                 nome: true,
                 projeto: { select: { nome: true } }
@@ -85,7 +85,8 @@ const meusMatriculas = async (req, res) => {
         id: true,
         ativa: true,
         exameMedico: true,
-        turma: {
+        frequenciaSemanal: true,
+        turmas: {
           select: {
             id: true,
             nome: true,

@@ -26,29 +26,33 @@ const criar = async (req, res) => {
     const ehAdmin = req.usuario.papel === 'ADMIN'
 
     if (tipo === 'PROJETO' && !ehAdmin) {
-      const matricula = await prisma.matricula.findFirst({
+      const acesso = await prisma.turma.findFirst({
         where: {
-          usuarioId: autorId,
-          ativa: true,
-          turma: { projetoId: Number(projetoId) }
+          projetoId: Number(projetoId),
+          OR: [
+            { professorId: autorId },
+            { matriculas: { some: { usuarioId: autorId, ativa: true } } }
+          ]
         }
       })
 
-      if (!matricula) {
+      if (!acesso) {
         return res.status(403).json({ erro: 'Você não participa deste projeto' })
       }
     }
 
     if (tipo === 'TURMA' && !ehAdmin) {
-      const matricula = await prisma.matricula.findFirst({
+      const acesso = await prisma.turma.findFirst({
         where: {
-          usuarioId: autorId,
-          ativa: true,
-          turmaId: Number(turmaId)
+          id: Number(turmaId),
+          OR: [
+            { professorId: autorId },
+            { matriculas: { some: { usuarioId: autorId, ativa: true } } }
+          ]
         }
       })
 
-      if (!matricula) {
+      if (!acesso) {
         return res.status(403).json({ erro: 'Você não participa desta turma' })
       }
     }
@@ -80,16 +84,27 @@ const feed = async (req, res) => {
     let where = {}
 
     if (!ehAdmin) {
-      const matriculas = await prisma.matricula.findMany({
-        where: {
-          usuarioId: req.usuario.id,
-          ativa: true
-        },
-        include: { turma: true }
-      })
+      const [matriculas, turmasComoProfessor] = await Promise.all([
+        prisma.matricula.findMany({
+          where: {
+            usuarioId: req.usuario.id,
+            ativa: true
+          },
+          include: { turmas: true }
+        }),
+        prisma.turma.findMany({
+          where: { professorId: req.usuario.id }
+        })
+      ])
 
-      const turmaIds = matriculas.map((m) => m.turmaId)
-      const projetoIds = matriculas.map((m) => m.turma.projetoId)
+      const turmaIds = [
+        ...matriculas.flatMap((m) => m.turmas.map((t) => t.id)),
+        ...turmasComoProfessor.map((t) => t.id)
+      ]
+      const projetoIds = [
+        ...matriculas.flatMap((m) => m.turmas.map((t) => t.projetoId)),
+        ...turmasComoProfessor.map((t) => t.projetoId)
+      ]
 
       where = {
         OR: [
