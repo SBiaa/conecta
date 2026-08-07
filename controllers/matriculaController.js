@@ -164,4 +164,41 @@ const atualizar = async (req, res) => {
   }
 }
 
-module.exports = { criar, atualizar }
+const remover = async (req, res) => {
+  const { id } = req.params
+
+  try {
+    const matricula = await prisma.matricula.findUnique({
+      where: { id: Number(id) },
+      include: {
+        pagamentos: { select: { id: true } },
+        presencas: { select: { id: true } }
+      }
+    })
+
+    if (!matricula) {
+      return res.status(404).json({ erro: 'Matrícula não encontrada' })
+    }
+
+    if (matricula.pagamentos.length > 0 || matricula.presencas.length > 0) {
+      return res.status(409).json({
+        erro: 'Não é possível excluir a matrícula pois há pagamentos ou presenças vinculados a ela'
+      })
+    }
+
+    await prisma.$transaction([
+      prisma.matriculaTurma.deleteMany({ where: { matriculaId: Number(id) } }),
+      prisma.matricula.delete({ where: { id: Number(id) } })
+    ])
+
+    res.status(200).json({ ok: true })
+  } catch (erro) {
+    if (erro.code === 'P2025') {
+      return res.status(404).json({ erro: 'Matrícula não encontrada' })
+    }
+    console.error(erro)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
+module.exports = { criar, atualizar, remover }
