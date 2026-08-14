@@ -205,6 +205,7 @@ const atualizar = async (req, res) => {
   const { id } = req.params
   const {
     nome,
+    cpf,
     telefone,
     email,
     status,
@@ -221,11 +222,16 @@ const atualizar = async (req, res) => {
     uf
   } = req.body
 
+  if (cpf !== undefined && cpf.trim() === '') {
+    return res.status(400).json({ erro: 'O campo "cpf" não pode ficar vazio' })
+  }
+
   try {
     const usuario = await prisma.usuario.update({
       where: { id },
       data: {
         nome,
+        cpf: cpf !== undefined ? cpf.trim() : undefined,
         telefone,
         email,
         status,
@@ -246,6 +252,7 @@ const atualizar = async (req, res) => {
     res.json({
       id: usuario.id,
       nome: usuario.nome,
+      cpf: usuario.cpf,
       email: usuario.email,
       telefone: usuario.telefone,
       status: usuario.status
@@ -255,7 +262,7 @@ const atualizar = async (req, res) => {
       return res.status(404).json({ erro: 'Usuário não encontrado' })
     }
     if (erro.code === 'P2002') {
-      return res.status(400).json({ erro: 'Email já cadastrado' })
+      return res.status(400).json({ erro: 'CPF ou email já cadastrado' })
     }
     console.error(erro)
     res.status(500).json({ erro: 'Erro interno do servidor' })
