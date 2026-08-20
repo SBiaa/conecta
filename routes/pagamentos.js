@@ -6,5 +6,6 @@ router.get('/', pagamentoController.listar)
 router.get('/atrasados', pagamentoController.atrasados)
 router.patch('/:id/pagar', pagamentoController.marcarComoPaga)
 router.post('/gerar-mes', pagamentoController.gerarMes)
+router.post('/gerar-matricula', pagamentoController.gerarParaMatricula)
 
 module.exports = router

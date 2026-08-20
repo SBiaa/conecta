@@ -172,6 +172,74 @@ const gerarMes = async (req, res) => {
   }
 }
 
+// Gera a mensalidade de uma matrícula só — usado quando a aluna entra depois
+// que o "gerar mensalidades" do mês já rodou.
+const gerarParaMatricula = async (req, res) => {
+  const { matriculaId, mesReferencia, vencimento } = req.body
+
+  if (!matriculaId) {
+    return res.status(400).json({ erro: 'O campo "matriculaId" é obrigatório' })
+  }
+
+  if (!mesReferencia || mesReferencia.trim() === '') {
+    return res.status(400).json({ erro: 'O campo "mesReferencia" é obrigatório' })
+  }
+
+  if (!vencimento) {
+    return res.status(400).json({ erro: 'O campo "vencimento" é obrigatório' })
+  }
+
+  const dataVencimento = new Date(vencimento)
+  if (isNaN(dataVencimento.getTime())) {
+    return res.status(400).json({ erro: 'vencimento inválido. Use o formato AAAA-MM-DD' })
+  }
+
+  try {
+    const matricula = await prisma.matricula.findUnique({
+      where: { id: Number(matriculaId) },
+      select: { id: true, ativa: true, frequenciaSemanal: true }
+    })
+
+    if (!matricula) {
+      return res.status(404).json({ erro: 'Matrícula não encontrada' })
+    }
+
+    const valor = PLANOS[matricula.frequenciaSemanal]
+    if (!valor) {
+      return res.status(400).json({
+        erro: 'Esta matrícula não tem um plano válido. Ajuste o plano antes de gerar a mensalidade.'
+      })
+    }
+
+    const jaExiste = await prisma.pagamento.findFirst({
+      where: { matriculaId: matricula.id, mesReferencia, tipo: 'MENSALIDADE' },
+      select: { id: true }
+    })
+
+    if (jaExiste) {
+      return res.status(409).json({
+        erro: 'Já existe uma mensalidade desta matrícula para o mês escolhido'
+      })
+    }
+
+    const pagamento = await prisma.pagamento.create({
+      data: {
+        tipo: 'MENSALIDADE',
+        valor,
+        mesReferencia,
+        vencimento: dataVencimento,
+        status: 'PENDENTE',
+        matriculaId: matricula.id
+      }
+    })
+
+    res.status(201).json(pagamento)
+  } catch (erro) {
+    console.error(erro)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
 const atrasados = async (req, res) => {
   const { projetoId } = req.query
 
@@ -199,4 +267,4 @@ const atrasados = async (req, res) => {
   }
 }
 
-module.exports = { listar, marcarComoPaga, gerarMes, atrasados }
+module.exports = { listar, marcarComoPaga, gerarMes, gerarParaMatricula, atrasados }

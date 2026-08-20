@@ -1,5 +1,6 @@
 const prisma = require('../db')
 const { PLANOS } = require('../config/planos')
+const { apenasData } = require('../utils/mes')
 
 const EXAMES_MEDICOS_VALIDOS = ['APTO', 'NAO_APTO', 'AGUARDANDO']
 const FREQUENCIAS_VALIDAS = Object.keys(PLANOS).map(Number)
@@ -39,7 +40,7 @@ function montarDadosInscricao(inscricao) {
       vencimento,
       status,
       ...(status === 'PAGA'
-        ? { dataPagamento: hoje, formaPagamento: inscricao.formaPagamento }
+        ? { dataPagamento: apenasData(hoje), formaPagamento: inscricao.formaPagamento }
         : {})
     }
   }
