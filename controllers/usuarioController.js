@@ -67,6 +67,7 @@ const buscarPorId = async (req, res) => {
         cpf: true,
         email: true,
         telefone: true,
+        fotoUrl: true,
         papel: true,
         status: true,
         criadoEm: true,

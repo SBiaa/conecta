@@ -12,6 +12,7 @@ const meusDados = async (req, res) => {
         cpf: true,
         email: true,
         telefone: true,
+        fotoUrl: true,
         papel: true,
         rg: true,
         dataNascimento: true,
@@ -174,4 +175,51 @@ const minhaFrequencia = async (req, res) => {
   }
 }
 
-module.exports = { meusDados, meusPagamentos, meusMatriculas, minhaFrequencia }
+// O navegador já redimensiona a imagem antes de enviar; isso aqui é só o
+// cinto de segurança contra um cliente que não passou por essa etapa.
+const FORMATO_FOTO = /^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/]+=*$/
+const TAMANHO_MAXIMO_FOTO = 2_000_000 // caracteres da data URL
+
+const atualizarFoto = async (req, res) => {
+  const { foto } = req.body
+
+  if (!foto || typeof foto !== 'string' || !FORMATO_FOTO.test(foto)) {
+    return res.status(400).json({ erro: 'Envie uma foto em formato JPEG, PNG ou WEBP' })
+  }
+
+  if (foto.length > TAMANHO_MAXIMO_FOTO) {
+    return res.status(400).json({ erro: 'A foto é grande demais' })
+  }
+
+  try {
+    const usuario = await prisma.usuario.update({
+      where: { id: req.usuario.id },
+      data: { fotoUrl: foto },
+      select: { fotoUrl: true }
+    })
+
+    res.json(usuario)
+  } catch (erro) {
+    console.error(erro)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
+const removerFoto = async (req, res) => {
+  try {
+    await prisma.usuario.update({ where: { id: req.usuario.id }, data: { fotoUrl: null } })
+    res.json({ fotoUrl: null })
+  } catch (erro) {
+    console.error(erro)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
+module.exports = {
+  meusDados,
+  meusPagamentos,
+  meusMatriculas,
+  minhaFrequencia,
+  atualizarFoto,
+  removerFoto
+}

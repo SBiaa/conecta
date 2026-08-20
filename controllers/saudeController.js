@@ -37,64 +37,87 @@ function mesAtual() {
   return hojeLocalISO().slice(0, 7)
 }
 
+// Prisma devolve Decimal; no JSON fica mais simples como number.
+function numeroOuNulo(valor) {
+  return valor === null || valor === undefined ? null : Number(valor)
+}
+
 function serializarRegistro(registro) {
   return {
     id: registro.id,
     data: dataISO(registro.data),
-    peso: registro.peso === null ? null : Number(registro.peso),
+    peso: numeroOuNulo(registro.peso),
     nivelDor: registro.nivelDor,
     locaisDor: registro.locaisDor,
     disposicao: registro.disposicao,
-    observacao: registro.observacao
+    observacao: registro.observacao,
+    percentualGordura: numeroOuNulo(registro.percentualGordura),
+    percentualAgua: numeroOuNulo(registro.percentualAgua),
+    massaMuscular: numeroOuNulo(registro.massaMuscular),
+    massaOssea: numeroOuNulo(registro.massaOssea),
+    gorduraVisceral: registro.gorduraVisceral,
+    taxaMetabolica: registro.taxaMetabolica
   }
 }
 
-// Devolve { dados } ou { erro } com a mensagem pronta pro 400.
-function validarRegistro(corpo) {
-  const { data, peso, nivelDor, locaisDor, disposicao, observacao } = corpo ?? {}
+// Faixas de cada campo numerico. As bordas sao largas de proposito: servem pra
+// pegar dedo escorregado (peso 700, gordura 300%), nao pra julgar corpo.
+const CAMPOS_REGISTRO = {
+  peso: { nome: 'O peso', min: 20, max: 400, casas: 2 },
+  nivelDor: { nome: 'O nível de dor', min: 0, max: 5, inteiro: true },
+  disposicao: { nome: 'A disposição', min: 1, max: 5, inteiro: true },
+  percentualGordura: { nome: 'O percentual de gordura', min: 3, max: 70, casas: 1 },
+  percentualAgua: { nome: 'O percentual de água', min: 20, max: 80, casas: 1 },
+  massaMuscular: { nome: 'A massa muscular', min: 5, max: 150, casas: 2 },
+  massaOssea: { nome: 'A massa óssea', min: 0.5, max: 10, casas: 2 },
+  gorduraVisceral: { nome: 'A gordura visceral', min: 1, max: 59, inteiro: true },
+  taxaMetabolica: { nome: 'A taxa metabólica', min: 500, max: 5000, inteiro: true }
+}
 
+// Campo em branco vira null sem reclamar — na ficha quase tudo e opcional.
+// Devolve { valor } ou { erro }.
+function numeroOpcional(bruto, { nome, min, max, inteiro = false, casas = 2 }) {
+  if (bruto === undefined || bruto === null || bruto === '') return { valor: null }
+
+  // Aceita "67,5" alem de "67.5": e o que o teclado do celular oferece em pt-BR.
+  const numero = typeof bruto === 'string' ? Number(bruto.replace(',', '.')) : Number(bruto)
+
+  if (!Number.isFinite(numero)) return { erro: `${nome} precisa ser um número` }
+  if (inteiro && !Number.isInteger(numero)) return { erro: `${nome} precisa ser um número inteiro` }
+  if (numero < min || numero > max) return { erro: `${nome} deve estar entre ${min} e ${max}` }
+
+  const fator = 10 ** casas
+  return { valor: inteiro ? numero : Math.round(numero * fator) / fator }
+}
+
+// Valida a data de um registro. Devolve { data, texto } ou { erro }.
+function dataOpcional(data) {
   if (data !== undefined && data !== null && !/^\d{4}-\d{2}-\d{2}$/.test(data)) {
     return { erro: 'A data deve estar no formato AAAA-MM-DD' }
   }
 
-  const dataTexto = data ?? hojeLocalISO()
-  const dataRegistro = new Date(`${dataTexto}T00:00:00.000Z`)
+  const texto = data ?? hojeLocalISO()
+  const convertida = new Date(`${texto}T00:00:00.000Z`)
 
-  if (Number.isNaN(dataRegistro.getTime())) {
-    return { erro: 'Data inválida' }
-  }
-  // Comparação em texto: os dois lados são o dia local, sem fuso no meio.
-  if (dataTexto > hojeLocalISO()) {
-    return { erro: 'Não dá pra registrar uma data no futuro' }
-  }
+  if (Number.isNaN(convertida.getTime())) return { erro: 'Data inválida' }
+  // Comparacao em texto: os dois lados sao o dia local, sem fuso no meio.
+  if (texto > hojeLocalISO()) return { erro: 'Não dá pra registrar uma data no futuro' }
 
-  let pesoValidado = null
-  if (peso !== undefined && peso !== null && peso !== '') {
-    const numero = Number(peso)
-    // 20 a 400 kg: larga o bastante pra não barrar ninguém, apertada o bastante
-    // pra pegar dedo escorregado (5 kg, 700 kg).
-    if (!Number.isFinite(numero) || numero < 20 || numero > 400) {
-      return { erro: 'O peso deve ser um número entre 20 e 400' }
-    }
-    pesoValidado = Math.round(numero * 100) / 100
-  }
+  return { data: convertida, texto }
+}
 
-  let dorValidada = null
-  if (nivelDor !== undefined && nivelDor !== null && nivelDor !== '') {
-    const numero = Number(nivelDor)
-    if (!Number.isInteger(numero) || numero < 0 || numero > 5) {
-      return { erro: 'O nível de dor deve ser um número inteiro de 0 a 5' }
-    }
-    dorValidada = numero
-  }
+// Devolve { dados } ou { erro } com a mensagem pronta pro 400.
+function validarRegistro(corpo) {
+  const { locaisDor, observacao } = corpo ?? {}
 
-  let disposicaoValidada = null
-  if (disposicao !== undefined && disposicao !== null && disposicao !== '') {
-    const numero = Number(disposicao)
-    if (!Number.isInteger(numero) || numero < 1 || numero > 5) {
-      return { erro: 'A disposição deve ser um número inteiro de 1 a 5' }
-    }
-    disposicaoValidada = numero
+  const { data, erro: erroData } = dataOpcional(corpo?.data)
+  if (erroData) return { erro: erroData }
+
+  const numeros = {}
+  for (const [campo, regra] of Object.entries(CAMPOS_REGISTRO)) {
+    const { valor, erro } = numeroOpcional(corpo?.[campo], regra)
+    if (erro) return { erro }
+    numeros[campo] = valor
   }
 
   let locaisValidados = []
@@ -115,9 +138,7 @@ function validarRegistro(corpo) {
       : String(observacao).trim().slice(0, 500)
 
   const vazio =
-    pesoValidado === null &&
-    dorValidada === null &&
-    disposicaoValidada === null &&
+    Object.values(numeros).every((v) => v === null) &&
     observacaoValidada === null &&
     locaisValidados.length === 0
 
@@ -126,14 +147,7 @@ function validarRegistro(corpo) {
   }
 
   return {
-    dados: {
-      data: dataRegistro,
-      peso: pesoValidado,
-      nivelDor: dorValidada,
-      locaisDor: locaisValidados,
-      disposicao: disposicaoValidada,
-      observacao: observacaoValidada
-    }
+    dados: { data, ...numeros, locaisDor: locaisValidados, observacao: observacaoValidada }
   }
 }
 
@@ -213,8 +227,62 @@ async function registrosDoPeriodo(usuarioId, intervalo) {
 }
 
 // Resume peso, dor e disposição de uma lista já serializada.
+// Primeiro, ultimo e variacao de um campo numerico ao longo do periodo.
+// Os registros chegam ordenados por data crescente.
+function evolucaoDe(registros, campo, casas = 2) {
+  const comValor = registros.filter((r) => r[campo] !== null)
+
+  if (comValor.length === 0) {
+    return { primeiro: null, ultimo: null, variacao: null, serie: [] }
+  }
+
+  const primeiro = comValor[0][campo]
+  const ultimo = comValor[comValor.length - 1][campo]
+  const fator = 10 ** casas
+
+  return {
+    primeiro,
+    ultimo,
+    // Uma leitura so nao e variacao — e so um ponto.
+    variacao: comValor.length > 1 ? Math.round((ultimo - primeiro) * fator) / fator : null,
+    serie: comValor.map((r) => ({ data: r.data, valor: r[campo] }))
+  }
+}
+
+// IMC arredondado a uma casa. Sem altura cadastrada nao da pra calcular.
+function calcularImc(peso, alturaCm) {
+  if (peso === null || peso === undefined || !alturaCm) return null
+  const metros = alturaCm / 100
+  return Math.round((peso / (metros * metros)) * 10) / 10
+}
+
+function serializarAvaliacao(avaliacao) {
+  return {
+    id: avaliacao.id,
+    data: dataISO(avaliacao.data),
+    cintura: numeroOuNulo(avaliacao.cintura),
+    quadril: numeroOuNulo(avaliacao.quadril),
+    braco: numeroOuNulo(avaliacao.braco),
+    coxa: numeroOuNulo(avaliacao.coxa),
+    panturrilha: numeroOuNulo(avaliacao.panturrilha),
+    torax: numeroOuNulo(avaliacao.torax),
+    observacao: avaliacao.observacao,
+    registradoPor: avaliacao.registradoPor ? avaliacao.registradoPor.nome : null
+  }
+}
+
+// Campos da balanca e quantas casas decimais cada um carrega.
+const CAMPOS_COMPOSICAO = [
+  ['percentualGordura', 1],
+  ['percentualAgua', 1],
+  ['massaMuscular', 2],
+  ['massaOssea', 2],
+  ['gorduraVisceral', 0],
+  ['taxaMetabolica', 0]
+]
+
+// Resume peso, composicao corporal, dor e disposicao de uma lista ja serializada.
 function resumirSaude(registros) {
-  const comPeso = registros.filter((r) => r.peso !== null)
   const comDor = registros.filter((r) => r.nivelDor !== null)
   const comDisposicao = registros.filter((r) => r.disposicao !== null)
 
@@ -227,15 +295,12 @@ function resumirSaude(registros) {
 
   return {
     totalRegistros: registros.length,
-    peso: {
-      primeiro: comPeso.length > 0 ? comPeso[0].peso : null,
-      ultimo: comPeso.length > 0 ? comPeso[comPeso.length - 1].peso : null,
-      variacao:
-        comPeso.length > 1
-          ? Math.round((comPeso[comPeso.length - 1].peso - comPeso[0].peso) * 100) / 100
-          : null,
-      serie: comPeso.map((r) => ({ data: r.data, peso: r.peso }))
-    },
+    peso: evolucaoDe(registros, 'peso'),
+    // Chaveado pelo proprio nome do campo: e assim que a tela indexa, e evita
+    // que os dois lados sigam nomes diferentes pro mesmo numero.
+    composicao: Object.fromEntries(
+      CAMPOS_COMPOSICAO.map(([campo, casas]) => [campo, evolucaoDe(registros, campo, casas)])
+    ),
     dor: {
       media: media(comDor.map((r) => r.nivelDor)),
       maior: comDor.length > 0 ? Math.max(...comDor.map((r) => r.nivelDor)) : null,
@@ -251,6 +316,10 @@ function resumirSaude(registros) {
   }
 }
 
+const AVALIACAO_COM_AUTOR = {
+  include: { registradoPor: { select: { nome: true } } }
+}
+
 // Monta o relatório mensal completo de um usuário. Usado pela aluna (nela mesma),
 // pelo professor da turma dela e pelo admin — a checagem de permissão fica fora.
 async function montarRelatorio(usuarioId, mes) {
@@ -260,25 +329,46 @@ async function montarRelatorio(usuarioId, mes) {
   const mesAnterior = mesAnteriorDe(mes)
   const intervaloAnterior = intervaloDoMes(mesAnterior)
 
-  const [frequencia, registros, frequenciaAnterior, registrosAnteriores] = await Promise.all([
-    frequenciaDoPeriodo(usuarioId, intervalo),
-    registrosDoPeriodo(usuarioId, intervalo),
-    frequenciaDoPeriodo(usuarioId, intervaloAnterior),
-    registrosDoPeriodo(usuarioId, intervaloAnterior)
-  ])
+  const [usuario, frequencia, registros, frequenciaAnterior, registrosAnteriores, avaliacoes, ultimaAvaliacao] =
+    await Promise.all([
+      prisma.usuario.findUnique({ where: { id: usuarioId }, select: { alturaCm: true } }),
+      frequenciaDoPeriodo(usuarioId, intervalo),
+      registrosDoPeriodo(usuarioId, intervalo),
+      frequenciaDoPeriodo(usuarioId, intervaloAnterior),
+      registrosDoPeriodo(usuarioId, intervaloAnterior),
+      prisma.avaliacao.findMany({
+        where: { usuarioId, data: { gte: intervalo.inicio, lt: intervalo.fim } },
+        orderBy: { data: 'asc' },
+        ...AVALIACAO_COM_AUTOR
+      }),
+      // A ultima avaliacao de todas, mesmo fora do mes: e ela que serve de
+      // referencia quando a associada nao foi medida neste mes.
+      prisma.avaliacao.findFirst({
+        where: { usuarioId },
+        orderBy: { data: 'desc' },
+        ...AVALIACAO_COM_AUTOR
+      })
+    ])
 
   const resumo = resumirSaude(registros)
   const resumoAnterior = resumirSaude(registrosAnteriores)
+  const alturaCm = usuario?.alturaCm ?? null
 
   return {
     mes,
+    alturaCm,
+    imc: calcularImc(resumo.peso.ultimo, alturaCm),
     frequencia,
     ...resumo,
     registros,
+    avaliacoes: avaliacoes.map(serializarAvaliacao),
+    ultimaAvaliacao: ultimaAvaliacao ? serializarAvaliacao(ultimaAvaliacao) : null,
     comparativo: {
       mes: mesAnterior,
       frequenciaPercentual: frequenciaAnterior.percentual,
       pesoUltimo: resumoAnterior.peso.ultimo,
+      imc: calcularImc(resumoAnterior.peso.ultimo, alturaCm),
+      gorduraUltima: resumoAnterior.composicao.percentualGordura.ultimo,
       dorMedia: resumoAnterior.dor.media,
       disposicaoMedia: resumoAnterior.disposicao.media
     }
@@ -461,11 +551,159 @@ const saudeDaTurma = async (req, res) => {
   }
 }
 
+/* ---------- avaliação física (medidas de fita) ---------- */
+
+const CAMPOS_AVALIACAO = {
+  cintura: { nome: 'A cintura', min: 30, max: 250, casas: 1 },
+  quadril: { nome: 'O quadril', min: 30, max: 250, casas: 1 },
+  braco: { nome: 'O braço', min: 10, max: 100, casas: 1 },
+  coxa: { nome: 'A coxa', min: 20, max: 150, casas: 1 },
+  panturrilha: { nome: 'A panturrilha', min: 15, max: 100, casas: 1 },
+  torax: { nome: 'O tórax', min: 40, max: 200, casas: 1 }
+}
+
+// A altura mora no Usuario, nao na avaliacao: e propriedade da pessoa, nao do
+// evento. Mas e medida junto, entao entra no mesmo formulario.
+const REGRA_ALTURA = { nome: 'A altura', min: 100, max: 250, inteiro: true }
+
+function validarAvaliacao(corpo) {
+  const { data, erro: erroData } = dataOpcional(corpo?.data)
+  if (erroData) return { erro: erroData }
+
+  const medidas = {}
+  for (const [campo, regra] of Object.entries(CAMPOS_AVALIACAO)) {
+    const { valor, erro } = numeroOpcional(corpo?.[campo], regra)
+    if (erro) return { erro }
+    medidas[campo] = valor
+  }
+
+  const { valor: alturaCm, erro: erroAltura } = numeroOpcional(corpo?.alturaCm, REGRA_ALTURA)
+  if (erroAltura) return { erro: erroAltura }
+
+  const observacao =
+    corpo?.observacao === undefined || corpo?.observacao === null || String(corpo.observacao).trim() === ''
+      ? null
+      : String(corpo.observacao).trim().slice(0, 500)
+
+  const vazia = Object.values(medidas).every((v) => v === null) && alturaCm === null && observacao === null
+  if (vazia) {
+    return { erro: 'Preencha pelo menos uma medida' }
+  }
+
+  return { dados: { data, ...medidas, observacao }, alturaCm }
+}
+
+const registrarAvaliacao = async (req, res) => {
+  const usuarioId = req.params.usuarioId ?? req.params.id
+
+  const { dados, alturaCm, erro: erroValidacao } = validarAvaliacao(req.body)
+  if (erroValidacao) return res.status(400).json({ erro: erroValidacao })
+
+  try {
+    const aluna = await prisma.usuario.findUnique({ where: { id: usuarioId }, select: { id: true } })
+    if (!aluna) return res.status(404).json({ erro: 'Associada não encontrada' })
+
+    if (!(await podeVerSaudeDe(req, usuarioId))) {
+      return res.status(403).json({ erro: 'Acesso negado' })
+    }
+
+    // A altura so e sobrescrita quando vem preenchida — mandar o formulario sem
+    // ela nao pode apagar a que ja estava cadastrada.
+    const operacoes = [
+      prisma.avaliacao.upsert({
+        where: { usuarioId_data: { usuarioId, data: dados.data } },
+        create: { usuarioId, registradoPorId: req.usuario.id, ...dados },
+        update: { registradoPorId: req.usuario.id, ...dados },
+        ...AVALIACAO_COM_AUTOR
+      })
+    ]
+
+    if (alturaCm !== null) {
+      operacoes.push(prisma.usuario.update({ where: { id: usuarioId }, data: { alturaCm } }))
+    }
+
+    const [avaliacao] = await prisma.$transaction(operacoes)
+
+    res.status(201).json(serializarAvaliacao(avaliacao))
+  } catch (erro) {
+    console.error(erro)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
+const listarAvaliacoes = async (req, res) => {
+  const usuarioId = req.params.usuarioId ?? req.params.id
+
+  try {
+    if (!(await podeVerSaudeDe(req, usuarioId))) {
+      return res.status(403).json({ erro: 'Acesso negado' })
+    }
+
+    const avaliacoes = await prisma.avaliacao.findMany({
+      where: { usuarioId },
+      orderBy: { data: 'desc' },
+      ...AVALIACAO_COM_AUTOR
+    })
+
+    res.json(avaliacoes.map(serializarAvaliacao))
+  } catch (erro) {
+    console.error(erro)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
+const apagarAvaliacao = async (req, res) => {
+  const usuarioId = req.params.usuarioId ?? req.params.id
+  const id = Number(req.params.avaliacaoId)
+
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ erro: 'Avaliação inválida' })
+  }
+
+  try {
+    if (!(await podeVerSaudeDe(req, usuarioId))) {
+      return res.status(403).json({ erro: 'Acesso negado' })
+    }
+
+    const avaliacao = await prisma.avaliacao.findUnique({ where: { id } })
+    if (!avaliacao || avaliacao.usuarioId !== usuarioId) {
+      return res.status(404).json({ erro: 'Avaliação não encontrada' })
+    }
+
+    await prisma.avaliacao.delete({ where: { id } })
+    res.json({ ok: true })
+  } catch (erro) {
+    console.error(erro)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
+// A associada le as proprias avaliacoes, mas nao registra nem apaga: quem mede
+// e a professora ou a coordenacao.
+const minhasAvaliacoes = async (req, res) => {
+  try {
+    const avaliacoes = await prisma.avaliacao.findMany({
+      where: { usuarioId: req.usuario.id },
+      orderBy: { data: 'desc' },
+      ...AVALIACAO_COM_AUTOR
+    })
+
+    res.json(avaliacoes.map(serializarAvaliacao))
+  } catch (erro) {
+    console.error(erro)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
 module.exports = {
   meusRegistros,
   registrar,
   apagarRegistro,
   meuRelatorio,
+  minhasAvaliacoes,
   relatorioDaAluna,
-  saudeDaTurma
+  saudeDaTurma,
+  registrarAvaliacao,
+  listarAvaliacoes,
+  apagarAvaliacao
 }

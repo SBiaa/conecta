@@ -51,6 +51,13 @@ enum TipoPost {
   TURMA
 }
 
+enum TipoReacao {
+  CURTIR
+  AMEI
+  FORCA
+  PARABENS
+}
+
 enum LocalDor {
   JOELHO
   LOMBAR
@@ -69,6 +76,7 @@ model Usuario {
   senha     String
   email     String?  @unique
   telefone  String?
+  fotoUrl   String?  // data URL (base64) da foto de perfil, já redimensionada no navegador
   papel     Papel    @default(ASSOCIADO)
   status    Status   @default(ATIVO)
   criadoEm  DateTime @default(now())
@@ -87,8 +95,13 @@ cep         String?
   turmasComoProfessor Turma[]    @relation("TurmaProfessor")
   presencasRegistradas Presenca[] @relation("PresencaRegistradaPor")
   posts Post[]
+  reacoes Reacao[]
+  comentarios Comentario[]
   compras Venda[]
-  registrosSaude RegistroSaude[]
+  alturaCm         Int?   // altura em centimetros, pra calcular o IMC
+  registrosSaude   RegistroSaude[]
+  avaliacoes       Avaliacao[]
+  avaliacoesFeitas Avaliacao[] @relation("AvaliacaoRegistradaPor")
 }
 
 model Projeto {
@@ -236,6 +249,37 @@ model Post {
   turmaId   Int?
   turma     Turma?   @relation(fields: [turmaId], references: [id])
   criadoEm  DateTime @default(now())
+
+  reacoes     Reacao[]
+  comentarios Comentario[]
+}
+
+// Uma reacao por pessoa por post: reagir de novo troca a reacao anterior.
+// Quem quer tirar a reacao manda DELETE — nao existe reacao "neutra".
+model Reacao {
+  id        Int        @id @default(autoincrement())
+  postId    Int
+  post      Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  usuarioId String
+  usuario   Usuario    @relation(fields: [usuarioId], references: [id])
+  tipo      TipoReacao
+  criadoEm  DateTime   @default(now())
+  editadoEm DateTime   @updatedAt
+
+  @@unique([postId, usuarioId])
+  @@index([postId])
+}
+
+model Comentario {
+  id        Int      @id @default(autoincrement())
+  postId    Int
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  autorId   String
+  autor     Usuario  @relation(fields: [autorId], references: [id])
+  conteudo  String
+  criadoEm  DateTime @default(now())
+
+  @@index([postId, criadoEm])
 }
 
 // Dado de saude da associada. Fica no Usuario, e nao na Matricula, porque o
@@ -251,8 +295,46 @@ model RegistroSaude {
   locaisDor  LocalDor[]
   disposicao Int?       // 1 (muito mal) a 5 (muito bem)
   observacao String?
+
+  // Composicao corporal: vem da balanca junto com o peso, na mesma pesagem.
+  // Hoje a associada digita o que le no app da balanca; se um dia houver
+  // integracao, e aqui que os numeros caem.
+  percentualGordura Decimal? @db.Decimal(4, 1)
+  percentualAgua    Decimal? @db.Decimal(4, 1)
+  massaMuscular     Decimal? @db.Decimal(5, 2) // kg
+  massaOssea        Decimal? @db.Decimal(4, 2) // kg
+  gorduraVisceral   Int?                        // indice, 1 a 59
+  taxaMetabolica    Int?                        // kcal por dia
+
   criadoEm   DateTime   @default(now())
   editadoEm  DateTime   @updatedAt
+
+  @@unique([usuarioId, data])
+  @@index([usuarioId, data])
+}
+
+// Avaliacao fisica: as circunferencias de fita metrica, tiradas pela professora
+// ou pela coordenacao. Fica separada do RegistroSaude de proposito — aquele e o
+// check-in diario que a propria associada preenche, este e um evento periodico
+// feito por outra pessoa, e guarda quem mediu.
+model Avaliacao {
+  id              Int      @id @default(autoincrement())
+  usuarioId       String
+  usuario         Usuario  @relation(fields: [usuarioId], references: [id])
+  data            DateTime @db.Date
+  registradoPorId String
+  registradoPor   Usuario  @relation("AvaliacaoRegistradaPor", fields: [registradoPorId], references: [id])
+
+  cintura     Decimal? @db.Decimal(5, 1) // cm
+  quadril     Decimal? @db.Decimal(5, 1)
+  braco       Decimal? @db.Decimal(5, 1)
+  coxa        Decimal? @db.Decimal(5, 1)
+  panturrilha Decimal? @db.Decimal(5, 1)
+  torax       Decimal? @db.Decimal(5, 1)
+
+  observacao String?
+  criadoEm   DateTime @default(now())
+  editadoEm  DateTime @updatedAt
 
   @@unique([usuarioId, data])
   @@index([usuarioId, data])

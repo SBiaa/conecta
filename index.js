@@ -20,7 +20,8 @@ const { autenticar, exigirPapel } = require('./middlewares/auth')
 const app = express()
 
 app.use(cors())
-app.use(express.json())
+// limite maior por causa da foto de perfil (base64), que passa no corpo do JSON
+app.use(express.json({ limit: '3mb' }))
 
 // ...
 app.use('/turmas', autenticar, exigirPapel('ADMIN'), turmasRoutes)
