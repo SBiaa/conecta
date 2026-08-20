@@ -34,6 +34,11 @@ enum FormaPagamento {
   CARTAO
 }
 
+enum TipoPagamento {
+  MENSALIDADE
+  INSCRICAO
+}
+
 enum ExameMedico {
   APTO
   NAO_APTO
@@ -71,6 +76,7 @@ cep         String?
   turmasComoProfessor Turma[]    @relation("TurmaProfessor")
   presencasRegistradas Presenca[] @relation("PresencaRegistradaPor")
   posts Post[]
+  compras Venda[]
 }
 
 model Projeto {
@@ -118,6 +124,7 @@ model Matricula {
   frequenciaSemanal Int?
   ativa             Boolean   @default(true)
   dataInicio        DateTime  @default(now())
+  encerradaEm       DateTime?
 exameMedico  ExameMedico  @default(AGUARDANDO)
   pagamentos Pagamento[]
   presencas  Presenca[]
@@ -153,6 +160,7 @@ model Pagamento {
   id             Int             @id @default(autoincrement())
   matriculaId    Int
   matricula      Matricula       @relation(fields: [matriculaId], references: [id])
+  tipo           TipoPagamento   @default(MENSALIDADE)
   valor          Decimal         @db.Decimal(10, 2)
   mesReferencia  String
   vencimento     DateTime
@@ -160,6 +168,49 @@ model Pagamento {
   dataPagamento  DateTime?
   formaPagamento FormaPagamento?
   criadoEm       DateTime        @default(now())
+}
+
+model Produto {
+  id       Int      @id @default(autoincrement())
+  nome     String
+  preco    Decimal  @db.Decimal(10, 2)
+  ativo    Boolean  @default(true)
+  criadoEm DateTime @default(now())
+
+  vendas Venda[]
+}
+
+model Venda {
+  id             Int            @id @default(autoincrement())
+  produtoId      Int
+  produto        Produto        @relation(fields: [produtoId], references: [id])
+  quantidade     Int
+  valorUnitario  Decimal        @db.Decimal(10, 2)
+  valorTotal     Decimal        @db.Decimal(10, 2)
+  usuarioId      String?
+  usuario        Usuario?       @relation(fields: [usuarioId], references: [id])
+  data           DateTime
+  formaPagamento FormaPagamento
+  criadoEm       DateTime       @default(now())
+}
+
+model CategoriaDespesa {
+  id       Int      @id @default(autoincrement())
+  nome     String   @unique
+  ativa    Boolean  @default(true)
+  criadoEm DateTime @default(now())
+
+  despesas Despesa[]
+}
+
+model Despesa {
+  id          Int              @id @default(autoincrement())
+  descricao   String
+  categoriaId Int
+  categoria   CategoriaDespesa @relation(fields: [categoriaId], references: [id])
+  valor       Decimal          @db.Decimal(10, 2)
+  data        DateTime
+  criadoEm    DateTime         @default(now())
 }
 
 model Post {

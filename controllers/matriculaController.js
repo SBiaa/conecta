@@ -3,6 +3,47 @@ const { PLANOS } = require('../config/planos')
 
 const EXAMES_MEDICOS_VALIDOS = ['APTO', 'NAO_APTO', 'AGUARDANDO']
 const FREQUENCIAS_VALIDAS = Object.keys(PLANOS).map(Number)
+const FORMAS_PAGAMENTO_VALIDAS = ['DINHEIRO', 'PIX', 'CARTAO']
+
+function mesDeReferencia(data) {
+  return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`
+}
+
+// A taxa de inscrição é gravada como um Pagamento tipo INSCRICAO, reaproveitando
+// todo o fluxo de cobrança que já existe (listar, registrar pagamento, atrasados).
+function montarDadosInscricao(inscricao) {
+  if (!inscricao) return { dados: null }
+
+  const valor = Number(inscricao.valor)
+  if (isNaN(valor) || valor < 0) {
+    return { erro: 'O valor da inscrição não pode ser negativo' }
+  }
+
+  const status = inscricao.status === 'PAGA' ? 'PAGA' : 'PENDENTE'
+
+  if (status === 'PAGA' && !FORMAS_PAGAMENTO_VALIDAS.includes(inscricao.formaPagamento)) {
+    return { erro: 'Informe a forma de pagamento da inscrição (DINHEIRO, PIX ou CARTAO)' }
+  }
+
+  const hoje = new Date()
+  const vencimento = inscricao.vencimento ? new Date(inscricao.vencimento) : hoje
+  if (isNaN(vencimento.getTime())) {
+    return { erro: 'Vencimento da inscrição inválido. Use o formato AAAA-MM-DD' }
+  }
+
+  return {
+    dados: {
+      tipo: 'INSCRICAO',
+      valor,
+      mesReferencia: mesDeReferencia(hoje),
+      vencimento,
+      status,
+      ...(status === 'PAGA'
+        ? { dataPagamento: hoje, formaPagamento: inscricao.formaPagamento }
+        : {})
+    }
+  }
+}
 
 function validarSelecaoTurmas(selecao, frequenciaSemanal) {
   if (!FREQUENCIAS_VALIDAS.includes(Number(frequenciaSemanal))) {
@@ -56,7 +97,7 @@ async function validarTurmasReais(itens, frequenciaSemanal) {
 }
 
 const criar = async (req, res) => {
-  const { usuarioId, turmas, frequenciaSemanal, exameMedico } = req.body
+  const { usuarioId, turmas, frequenciaSemanal, exameMedico, inscricao } = req.body
 
   if (!usuarioId) {
     return res.status(400).json({ erro: 'O campo "usuarioId" é obrigatório' })
@@ -73,6 +114,11 @@ const criar = async (req, res) => {
     return res.status(400).json({ erro: erroSelecao })
   }
 
+  const { erro: erroInscricao, dados: dadosInscricao } = montarDadosInscricao(inscricao)
+  if (erroInscricao) {
+    return res.status(400).json({ erro: erroInscricao })
+  }
+
   try {
     const erroValidacao = await validarTurmasReais(itens, frequenciaSemanal)
     if (erroValidacao) {
@@ -86,7 +132,8 @@ const criar = async (req, res) => {
         turmasVinculadas: {
           create: itens.map((item) => ({ turmaId: item.turmaId, dias: item.dias }))
         },
-        ...(exameMedico ? { exameMedico } : {})
+        ...(exameMedico ? { exameMedico } : {}),
+        ...(dadosInscricao ? { pagamentos: { create: dadosInscricao } } : {})
       }
     })
     res.status(201).json(matricula)
@@ -98,7 +145,7 @@ const criar = async (req, res) => {
 
 const atualizar = async (req, res) => {
   const { id } = req.params
-  const { ativa, exameMedico, turmas, frequenciaSemanal } = req.body
+  const { ativa, exameMedico, turmas, frequenciaSemanal, inscricao } = req.body
 
   if (exameMedico && !EXAMES_MEDICOS_VALIDOS.includes(exameMedico)) {
     return res.status(400).json({
@@ -108,18 +155,23 @@ const atualizar = async (req, res) => {
 
   const mudandoTurmas = turmas !== undefined || frequenciaSemanal !== undefined
 
+  const { erro: erroInscricao, dados: dadosInscricao } = montarDadosInscricao(inscricao)
+  if (erroInscricao) {
+    return res.status(400).json({ erro: erroInscricao })
+  }
+
   try {
     let itens = null
 
+    const matriculaAtual = await prisma.matricula.findUnique({
+      where: { id: Number(id) }
+    })
+
+    if (!matriculaAtual) {
+      return res.status(404).json({ erro: 'Matrícula não encontrada' })
+    }
+
     if (mudandoTurmas) {
-      const matriculaAtual = await prisma.matricula.findUnique({
-        where: { id: Number(id) }
-      })
-
-      if (!matriculaAtual) {
-        return res.status(404).json({ erro: 'Matrícula não encontrada' })
-      }
-
       const frequenciaFinal = frequenciaSemanal !== undefined
         ? frequenciaSemanal
         : matriculaAtual.frequenciaSemanal
@@ -137,6 +189,11 @@ const atualizar = async (req, res) => {
       itens = itensValidados
     }
 
+    // Só marca/limpa encerradaEm quando "ativa" realmente muda de estado — trocar de
+    // turma ou corrigir o exame não mexe no histórico de encerramento.
+    const encerrando = ativa === false && matriculaAtual.ativa === true
+    const reativando = ativa === true && matriculaAtual.ativa === false
+
     const matricula = await prisma.$transaction(async (tx) => {
       if (itens) {
         await tx.matriculaTurma.deleteMany({ where: { matriculaId: Number(id) } })
@@ -145,12 +202,20 @@ const atualizar = async (req, res) => {
         })
       }
 
+      if (dadosInscricao) {
+        await tx.pagamento.create({
+          data: { ...dadosInscricao, matriculaId: Number(id) }
+        })
+      }
+
       return tx.matricula.update({
         where: { id: Number(id) },
         data: {
           ...(ativa !== undefined ? { ativa } : {}),
           ...(exameMedico ? { exameMedico } : {}),
-          ...(frequenciaSemanal !== undefined ? { frequenciaSemanal: Number(frequenciaSemanal) } : {})
+          ...(frequenciaSemanal !== undefined ? { frequenciaSemanal: Number(frequenciaSemanal) } : {}),
+          ...(encerrando ? { encerradaEm: new Date() } : {}),
+          ...(reativando ? { encerradaEm: null } : {})
         }
       })
     })

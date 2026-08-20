@@ -20,7 +20,7 @@ function reshapeMatricula(matricula) {
 }
 
 const listar = async (req, res) => {
-  const { mes, status, projetoId, usuarioId } = req.query
+  const { mes, status, tipo, projetoId, usuarioId } = req.query
 
   if (!mes && !usuarioId) {
     return res.status(400).json({ erro: 'O parâmetro "mes" é obrigatório' })
@@ -31,6 +31,7 @@ const listar = async (req, res) => {
       where: {
         ...(mes ? { mesReferencia: mes } : {}),
         ...(status ? { status } : {}),
+        ...(tipo ? { tipo } : {}),
         ...(projetoId ? { matricula: { turmasVinculadas: { some: { turma: { projetoId: Number(projetoId) } } } } } : {}),
         ...(usuarioId ? { matricula: { usuarioId } } : {})
       },
@@ -39,10 +40,12 @@ const listar = async (req, res) => {
         : [{ matricula: { usuario: { nome: 'asc' } } }],
       select: {
         id: true,
+        tipo: true,
         valor: true,
         status: true,
         mesReferencia: true,
         vencimento: true,
+        dataPagamento: true,
         formaPagamento: true,
         matricula: { select: SELECT_TURMAS_MATRICULA }
       }
@@ -78,9 +81,9 @@ const marcarComoPaga = async (req, res) => {
     return res.status(400).json({ erro: 'formaPagamento inválida. Use DINHEIRO, PIX ou CARTAO' })
   }
 
-  // 4. validação: valor obrigatório
-  if (!valor) {
-    return res.status(400).json({ erro: 'O campo "valor" é obrigatório' })
+  // 4. validação: valor obrigatório (0 é aceito — isenção)
+  if (valor === undefined || valor === null || valor === '' || isNaN(Number(valor)) || Number(valor) < 0) {
+    return res.status(400).json({ erro: 'O campo "valor" é obrigatório e não pode ser negativo' })
   }
 
   try {
@@ -127,9 +130,12 @@ const gerarMes = async (req, res) => {
       select: { id: true, frequenciaSemanal: true, usuario: { select: { nome: true } } }
     })
 
+    // Só mensalidades contam como "já gerado": uma inscrição no mesmo mês não pode
+    // fazer a mensalidade daquela matrícula ser pulada.
     const existentes = await prisma.pagamento.findMany({
       where: {
         mesReferencia,
+        tipo: 'MENSALIDADE',
         matriculaId: { in: matriculas.map((matricula) => matricula.id) }
       },
       select: { matriculaId: true }
@@ -148,6 +154,7 @@ const gerarMes = async (req, res) => {
       matriculasComValor.map((matricula) =>
         prisma.pagamento.create({
           data: {
+            tipo: 'MENSALIDADE',
             valor: PLANOS[matricula.frequenciaSemanal],
             mesReferencia,
             vencimento: new Date(vencimento),
@@ -178,6 +185,7 @@ const atrasados = async (req, res) => {
       orderBy: { vencimento: 'asc' },
       select: {
         id: true,
+        tipo: true,
         valor: true,
         vencimento: true,
         mesReferencia: true,

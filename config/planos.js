@@ -5,4 +5,7 @@ const PLANOS = {
   4: 160
 }
 
-module.exports = { PLANOS }
+// Valor sugerido da taxa de inscrição — o admin pode ajustar na hora da matrícula.
+const TAXA_MATRICULA_PADRAO = 15
+
+module.exports = { PLANOS, TAXA_MATRICULA_PADRAO }
