@@ -51,6 +51,17 @@ enum TipoPost {
   TURMA
 }
 
+enum LocalDor {
+  JOELHO
+  LOMBAR
+  CERVICAL
+  OMBRO
+  QUADRIL
+  TORNOZELO
+  PUNHO
+  OUTRO
+}
+
 model Usuario {
   id        String   @id @default(uuid())
   nome      String
@@ -77,6 +88,7 @@ cep         String?
   presencasRegistradas Presenca[] @relation("PresencaRegistradaPor")
   posts Post[]
   compras Venda[]
+  registrosSaude RegistroSaude[]
 }
 
 model Projeto {
@@ -224,4 +236,24 @@ model Post {
   turmaId   Int?
   turma     Turma?   @relation(fields: [turmaId], references: [id])
   criadoEm  DateTime @default(now())
+}
+
+// Dado de saude da associada. Fica no Usuario, e nao na Matricula, porque o
+// historico dela nao deixa de existir quando uma matricula encerra.
+// Um registro por dia: registrar de novo no mesmo dia atualiza o anterior.
+model RegistroSaude {
+  id         Int        @id @default(autoincrement())
+  usuarioId  String
+  usuario    Usuario    @relation(fields: [usuarioId], references: [id])
+  data       DateTime   @db.Date
+  peso       Decimal?   @db.Decimal(5, 2)
+  nivelDor   Int?       // 0 (sem dor) a 5 (dor forte)
+  locaisDor  LocalDor[]
+  disposicao Int?       // 1 (muito mal) a 5 (muito bem)
+  observacao String?
+  criadoEm   DateTime   @default(now())
+  editadoEm  DateTime   @updatedAt
+
+  @@unique([usuarioId, data])
+  @@index([usuarioId, data])
 }
