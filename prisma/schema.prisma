@@ -100,6 +100,7 @@ cep         String?
   compras Venda[]
   alturaCm         Int?   // altura em centimetros, pra calcular o IMC
   registrosSaude   RegistroSaude[]
+  registrosSaudeFeitos RegistroSaude[] @relation("RegistroSaudeRegistradoPor")
   avaliacoes       Avaliacao[]
   avaliacoesFeitas Avaliacao[] @relation("AvaliacaoRegistradaPor")
 }
@@ -285,11 +286,20 @@ model Comentario {
 // Dado de saude da associada. Fica no Usuario, e nao na Matricula, porque o
 // historico dela nao deixa de existir quando uma matricula encerra.
 // Um registro por dia: registrar de novo no mesmo dia atualiza o anterior.
+// Quem registra e a professora da turma (ou a coordenacao) — igual a
+// Avaliacao. A associada so le o resultado no Meu Progresso.
 model RegistroSaude {
   id         Int        @id @default(autoincrement())
   usuarioId  String
   usuario    Usuario    @relation(fields: [usuarioId], references: [id])
   data       DateTime   @db.Date
+
+  // Quem mediu/lançou este registro — a professora, na balança da turma.
+  // Fica opcional porque registros antigos foram digitados pela própria
+  // associada, antes dessa mudança, e não têm autor pra preencher aqui.
+  registradoPorId String?
+  registradoPor   Usuario? @relation("RegistroSaudeRegistradoPor", fields: [registradoPorId], references: [id])
+
   peso       Decimal?   @db.Decimal(5, 2)
   nivelDor   Int?       // 0 (sem dor) a 5 (dor forte)
   locaisDor  LocalDor[]
@@ -314,9 +324,9 @@ model RegistroSaude {
 }
 
 // Avaliacao fisica: as circunferencias de fita metrica, tiradas pela professora
-// ou pela coordenacao. Fica separada do RegistroSaude de proposito — aquele e o
-// check-in diario que a propria associada preenche, este e um evento periodico
-// feito por outra pessoa, e guarda quem mediu.
+// ou pela coordenacao. Fica separada do RegistroSaude de proposito — aquele e
+// o check-in do dia (peso, composicao, dor, disposicao), este e um evento
+// periodico de fita metrica. Os dois guardam quem mediu.
 model Avaliacao {
   id              Int      @id @default(autoincrement())
   usuarioId       String

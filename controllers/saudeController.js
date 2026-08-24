@@ -56,8 +56,13 @@ function serializarRegistro(registro) {
     massaMuscular: numeroOuNulo(registro.massaMuscular),
     massaOssea: numeroOuNulo(registro.massaOssea),
     gorduraVisceral: registro.gorduraVisceral,
-    taxaMetabolica: registro.taxaMetabolica
+    taxaMetabolica: registro.taxaMetabolica,
+    registradoPor: registro.registradoPor ? registro.registradoPor.nome : null
   }
+}
+
+const REGISTRO_COM_AUTOR = {
+  include: { registradoPor: { select: { nome: true } } }
 }
 
 // Faixas de cada campo numerico. As bordas sao largas de proposito: servem pra
@@ -221,7 +226,8 @@ async function registrosDoPeriodo(usuarioId, intervalo) {
       usuarioId,
       ...(intervalo ? { data: { gte: intervalo.inicio, lt: intervalo.fim } } : {})
     },
-    orderBy: { data: 'asc' }
+    orderBy: { data: 'asc' },
+    ...REGISTRO_COM_AUTOR
   })
   return registros.map(serializarRegistro)
 }
@@ -393,16 +399,29 @@ const meusRegistros = async (req, res) => {
   }
 }
 
-const registrar = async (req, res) => {
+// A associada não registra mais o próprio check-in — quem lança é a
+// professora da turma dela (ou a coordenação), na balança, igual já
+// acontecia com a avaliação de fita métrica. Ela só lê o resultado.
+const registrarRegistro = async (req, res) => {
+  const usuarioId = req.params.usuarioId ?? req.params.id
+
   const { dados, erro: erroValidacao } = validarRegistro(req.body)
   if (erroValidacao) return res.status(400).json({ erro: erroValidacao })
 
   try {
-    // Um registro por dia: se já existe o de hoje, ela está corrigindo, não duplicando.
+    const aluna = await prisma.usuario.findUnique({ where: { id: usuarioId }, select: { id: true } })
+    if (!aluna) return res.status(404).json({ erro: 'Associada não encontrada' })
+
+    if (!(await podeVerSaudeDe(req, usuarioId))) {
+      return res.status(403).json({ erro: 'Acesso negado' })
+    }
+
+    // Um registro por dia: se já existe o de hoje, está corrigindo, não duplicando.
     const registro = await prisma.registroSaude.upsert({
-      where: { usuarioId_data: { usuarioId: req.usuario.id, data: dados.data } },
-      create: { usuarioId: req.usuario.id, ...dados },
-      update: dados
+      where: { usuarioId_data: { usuarioId, data: dados.data } },
+      create: { usuarioId, registradoPorId: req.usuario.id, ...dados },
+      update: { registradoPorId: req.usuario.id, ...dados },
+      ...REGISTRO_COM_AUTOR
     })
 
     res.status(201).json(serializarRegistro(registro))
@@ -412,17 +431,22 @@ const registrar = async (req, res) => {
   }
 }
 
-const apagarRegistro = async (req, res) => {
-  const id = Number(req.params.id)
+const apagarRegistroDaAluna = async (req, res) => {
+  const usuarioId = req.params.usuarioId ?? req.params.id
+  const id = Number(req.params.registroId)
 
   if (!Number.isInteger(id)) {
     return res.status(400).json({ erro: 'Registro inválido' })
   }
 
   try {
+    if (!(await podeVerSaudeDe(req, usuarioId))) {
+      return res.status(403).json({ erro: 'Acesso negado' })
+    }
+
     const registro = await prisma.registroSaude.findUnique({ where: { id } })
 
-    if (!registro || registro.usuarioId !== req.usuario.id) {
+    if (!registro || registro.usuarioId !== usuarioId) {
       return res.status(404).json({ erro: 'Registro não encontrado' })
     }
 
@@ -529,7 +553,8 @@ const saudeDaTurma = async (req, res) => {
     const desde = new Date(`${dataISO(trintaDiasAtras)}T00:00:00.000Z`)
     const registros = await prisma.registroSaude.findMany({
       where: { usuarioId: { in: usuarioIds }, data: { gte: desde } },
-      orderBy: { data: 'desc' }
+      orderBy: { data: 'desc' },
+      ...REGISTRO_COM_AUTOR
     })
 
     const alunas = matriculas.map(({ usuario }) => {
@@ -697,8 +722,8 @@ const minhasAvaliacoes = async (req, res) => {
 
 module.exports = {
   meusRegistros,
-  registrar,
-  apagarRegistro,
+  registrarRegistro,
+  apagarRegistroDaAluna,
   meuRelatorio,
   minhasAvaliacoes,
   relatorioDaAluna,

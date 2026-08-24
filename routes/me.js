@@ -17,8 +17,6 @@ router.get('/pagamentos', meusPagamentos)
 router.get('/matriculas', meusMatriculas)
 router.get('/frequencia', minhaFrequencia)
 router.get('/saude', saudeController.meusRegistros)
-router.post('/saude', saudeController.registrar)
-router.delete('/saude/:id', saudeController.apagarRegistro)
 router.get('/relatorio', saudeController.meuRelatorio)
 router.get('/avaliacoes', saudeController.minhasAvaliacoes)
 
