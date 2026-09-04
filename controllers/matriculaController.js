@@ -230,14 +230,47 @@ const atualizar = async (req, res) => {
   }
 }
 
+function resumirVinculos(matricula) {
+  const pagos = matricula.pagamentos.filter((pagamento) => pagamento.status === 'PAGA')
+  return {
+    presencas: matricula.presencas.length,
+    pagamentos: matricula.pagamentos.length,
+    pagamentosPagos: pagos.length,
+    valorPago: pagos.reduce((soma, pagamento) => soma + Number(pagamento.valor), 0)
+  }
+}
+
+function descreverVinculos({ presencas, pagamentos, pagamentosPagos, valorPago }) {
+  const partes = []
+
+  if (presencas > 0) {
+    partes.push(`${presencas} ${presencas === 1 ? 'presença' : 'presenças'}`)
+  }
+
+  if (pagamentos > 0) {
+    const reais = valorPago.toFixed(2).replace('.', ',')
+    const detalhePagos = pagamentosPagos > 0
+      ? ` (${pagamentosPagos} já ${pagamentosPagos === 1 ? 'paga' : 'pagas'}, R$ ${reais})`
+      : ''
+    partes.push(`${pagamentos} ${pagamentos === 1 ? 'cobrança' : 'cobranças'}${detalhePagos}`)
+  }
+
+  return partes.join(' e ')
+}
+
+// Por padrão a exclusão é bloqueada quando existe histórico vinculado. Com
+// ?forcar=true a coordenação apaga assim mesmo — necessário para limpar
+// matrículas duplicadas, em que presenças e cobranças caíram na matrícula
+// errada e travavam a exclusão dela.
 const remover = async (req, res) => {
   const { id } = req.params
+  const forcar = req.query.forcar === 'true'
 
   try {
     const matricula = await prisma.matricula.findUnique({
       where: { id: Number(id) },
       include: {
-        pagamentos: { select: { id: true } },
+        pagamentos: { select: { id: true, status: true, valor: true } },
         presencas: { select: { id: true } }
       }
     })
@@ -246,18 +279,23 @@ const remover = async (req, res) => {
       return res.status(404).json({ erro: 'Matrícula não encontrada' })
     }
 
-    if (matricula.pagamentos.length > 0 || matricula.presencas.length > 0) {
+    const vinculos = resumirVinculos(matricula)
+
+    if ((vinculos.pagamentos > 0 || vinculos.presencas > 0) && !forcar) {
       return res.status(409).json({
-        erro: 'Não é possível excluir a matrícula pois há pagamentos ou presenças vinculados a ela'
+        erro: `Esta matrícula tem ${descreverVinculos(vinculos)} vinculados a ela.`,
+        vinculos
       })
     }
 
     await prisma.$transaction([
+      prisma.presenca.deleteMany({ where: { matriculaId: Number(id) } }),
+      prisma.pagamento.deleteMany({ where: { matriculaId: Number(id) } }),
       prisma.matriculaTurma.deleteMany({ where: { matriculaId: Number(id) } }),
       prisma.matricula.delete({ where: { id: Number(id) } })
     ])
 
-    res.status(200).json({ ok: true })
+    res.status(200).json({ ok: true, removidos: vinculos })
   } catch (erro) {
     if (erro.code === 'P2025') {
       return res.status(404).json({ erro: 'Matrícula não encontrada' })
