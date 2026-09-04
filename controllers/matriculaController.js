@@ -283,7 +283,7 @@ const remover = async (req, res) => {
 
     if ((vinculos.pagamentos > 0 || vinculos.presencas > 0) && !forcar) {
       return res.status(409).json({
-        erro: `Esta matrícula tem ${descreverVinculos(vinculos)} vinculados a ela.`,
+        erro: `Esta matrícula tem ${descreverVinculos(vinculos)} no histórico.`,
         vinculos
       })
     }
