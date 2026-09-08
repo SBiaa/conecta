@@ -14,5 +14,6 @@ router.delete('/:id/avaliacoes/:avaliacaoId', saudeController.apagarAvaliacao)
 router.post('/', usuarioController.criar)
 router.patch('/:id', usuarioController.atualizar)
 router.patch('/:id/senha', usuarioController.atualizarSenha)
+router.delete('/:id', usuarioController.remover)
 
 module.exports = router

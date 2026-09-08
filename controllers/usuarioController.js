@@ -299,4 +299,156 @@ const atualizarSenha = async (req, res) => {
   }
 }
 
-module.exports = { listar, buscarPorId, criar, atualizar, atualizarSenha }
+function descreverVinculosUsuario(v) {
+  const partes = []
+
+  if (v.matriculas > 0) {
+    partes.push(`${v.matriculas} ${v.matriculas === 1 ? 'matrícula' : 'matrículas'}`)
+  }
+  if (v.presencas > 0) {
+    partes.push(`${v.presencas} ${v.presencas === 1 ? 'presença' : 'presenças'}`)
+  }
+  if (v.pagamentos > 0) {
+    const reais = v.valorPago.toFixed(2).replace('.', ',')
+    const detalhePagos = v.pagamentosPagos > 0
+      ? ` (${v.pagamentosPagos} já ${v.pagamentosPagos === 1 ? 'paga' : 'pagas'}, R$ ${reais})`
+      : ''
+    partes.push(`${v.pagamentos} ${v.pagamentos === 1 ? 'cobrança' : 'cobranças'}${detalhePagos}`)
+  }
+  if (v.registrosSaude > 0) {
+    partes.push(`${v.registrosSaude} ${v.registrosSaude === 1 ? 'registro de saúde' : 'registros de saúde'}`)
+  }
+  if (v.avaliacoes > 0) {
+    partes.push(`${v.avaliacoes} ${v.avaliacoes === 1 ? 'avaliação física' : 'avaliações físicas'}`)
+  }
+  if (v.posts > 0) {
+    partes.push(`${v.posts} ${v.posts === 1 ? 'publicação' : 'publicações'} no mural`)
+  }
+  if (v.comentarios > 0) {
+    partes.push(`${v.comentarios} ${v.comentarios === 1 ? 'comentário' : 'comentários'}`)
+  }
+  if (v.compras > 0) {
+    partes.push(`${v.compras} ${v.compras === 1 ? 'compra registrada' : 'compras registradas'}`)
+  }
+
+  return partes.join(', ')
+}
+
+// Por padrão a exclusão é bloqueada quando existe histórico vinculado. Com
+// ?forcar=true a coordenação apaga assim mesmo — necessário para limpar
+// cadastros duplicados/errados (ex.: as matrículas "A definir"), do mesmo
+// jeito que já existe pra matrícula (matriculaController.remover).
+//
+// Vínculos em que este usuário é responsável por dado de OUTRA pessoa
+// (professor de turma, presença/avaliação que ele registrou) bloqueiam
+// SEMPRE, mesmo com forçar: apagar o usuário não pode apagar ou corromper
+// o histórico de outra pessoa. É preciso resolver isso à mão antes (trocar
+// o professor da turma, por exemplo).
+const remover = async (req, res) => {
+  const { id } = req.params
+  const forcar = req.query.forcar === 'true'
+
+  try {
+    const usuario = await prisma.usuario.findUnique({
+      where: { id },
+      include: {
+        matriculas: {
+          select: {
+            id: true,
+            pagamentos: { select: { id: true, status: true, valor: true } },
+            presencas: { select: { id: true } }
+          }
+        },
+        turmasComoProfessor: { select: { id: true } },
+        presencasRegistradas: { select: { id: true } },
+        avaliacoesFeitas: { select: { id: true } },
+        registrosSaude: { select: { id: true } },
+        avaliacoes: { select: { id: true } },
+        posts: { select: { id: true } },
+        comentarios: { select: { id: true } },
+        compras: { select: { id: true } }
+      }
+    })
+
+    if (!usuario) {
+      return res.status(404).json({ erro: 'Associado não encontrado' })
+    }
+
+    const responsabilidades = []
+    if (usuario.turmasComoProfessor.length > 0) {
+      const n = usuario.turmasComoProfessor.length
+      responsabilidades.push(`é professor(a) de ${n} ${n === 1 ? 'turma' : 'turmas'}`)
+    }
+    if (usuario.presencasRegistradas.length > 0) {
+      const n = usuario.presencasRegistradas.length
+      responsabilidades.push(`registrou ${n} ${n === 1 ? 'presença' : 'presenças'} de outras pessoas`)
+    }
+    if (usuario.avaliacoesFeitas.length > 0) {
+      const n = usuario.avaliacoesFeitas.length
+      responsabilidades.push(`registrou ${n} ${n === 1 ? 'avaliação física' : 'avaliações físicas'} de outras pessoas`)
+    }
+
+    if (responsabilidades.length > 0) {
+      return res.status(409).json({
+        bloqueioPermanente: true,
+        erro: `Não é possível excluir: este usuário ${responsabilidades.join(' e ')}. Resolva isso antes (troque o professor da turma, por exemplo).`
+      })
+    }
+
+    const presencas = usuario.matriculas.reduce((soma, matricula) => soma + matricula.presencas.length, 0)
+    const pagamentos = usuario.matriculas.flatMap((matricula) => matricula.pagamentos)
+    const pagos = pagamentos.filter((pagamento) => pagamento.status === 'PAGA')
+
+    const vinculos = {
+      matriculas: usuario.matriculas.length,
+      presencas,
+      pagamentos: pagamentos.length,
+      pagamentosPagos: pagos.length,
+      valorPago: pagos.reduce((soma, pagamento) => soma + Number(pagamento.valor), 0),
+      registrosSaude: usuario.registrosSaude.length,
+      avaliacoes: usuario.avaliacoes.length,
+      posts: usuario.posts.length,
+      comentarios: usuario.comentarios.length,
+      compras: usuario.compras.length
+    }
+
+    const temHistorico = [
+      vinculos.matriculas, vinculos.presencas, vinculos.pagamentos, vinculos.registrosSaude,
+      vinculos.avaliacoes, vinculos.posts, vinculos.comentarios, vinculos.compras
+    ].some((quantidade) => quantidade > 0)
+
+    if (temHistorico && !forcar) {
+      return res.status(409).json({
+        erro: `Este associado tem ${descreverVinculosUsuario(vinculos)} no histórico.`,
+        vinculos
+      })
+    }
+
+    const matriculaIds = usuario.matriculas.map((matricula) => matricula.id)
+
+    await prisma.$transaction([
+      prisma.presenca.deleteMany({ where: { matriculaId: { in: matriculaIds } } }),
+      prisma.pagamento.deleteMany({ where: { matriculaId: { in: matriculaIds } } }),
+      prisma.matriculaTurma.deleteMany({ where: { matriculaId: { in: matriculaIds } } }),
+      prisma.matricula.deleteMany({ where: { usuarioId: id } }),
+      prisma.registroSaude.deleteMany({ where: { usuarioId: id } }),
+      prisma.registroSaude.updateMany({ where: { registradoPorId: id }, data: { registradoPorId: null } }),
+      prisma.avaliacao.deleteMany({ where: { usuarioId: id } }),
+      prisma.reacao.deleteMany({ where: { usuarioId: id } }),
+      prisma.comentario.deleteMany({ where: { autorId: id } }),
+      prisma.post.deleteMany({ where: { autorId: id } }),
+      prisma.venda.updateMany({ where: { usuarioId: id }, data: { usuarioId: null } }),
+      prisma.usuario.delete({ where: { id } })
+    ])
+
+    res.status(200).json({ ok: true, removidos: vinculos })
+  } catch (erro) {
+    if (erro.code === 'P2025') {
+      return res.status(404).json({ erro: 'Associado não encontrado' })
+    }
+    console.error(erro)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
+module.exports = { listar, buscarPorId, criar, atualizar, atualizarSenha, remover }
