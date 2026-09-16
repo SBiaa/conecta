@@ -32,6 +32,7 @@ enum FormaPagamento {
   DINHEIRO
   PIX
   CARTAO
+  ABONADO
 }
 
 enum TipoPagamento {
@@ -103,6 +104,7 @@ cep         String?
   registrosSaudeFeitos RegistroSaude[] @relation("RegistroSaudeRegistradoPor")
   avaliacoes       Avaliacao[]
   avaliacoesFeitas Avaliacao[] @relation("AvaliacaoRegistradaPor")
+  pagamentosEditados Pagamento[] @relation("PagamentoEditadoPor")
 }
 
 model Projeto {
@@ -194,6 +196,14 @@ model Pagamento {
   dataPagamento  DateTime?
   formaPagamento FormaPagamento?
   criadoEm       DateTime        @default(now())
+
+  // Preenchidos só quando a coordenação corrige um pagamento já lançado
+  // (ex.: valor digitado errado) — não existe histórico completo de mudanças,
+  // só o registro da última correção. Setados manualmente (não @updatedAt)
+  // pra não disparar em toda escrita, como marcarComoPaga.
+  editadoEm    DateTime?
+  editadoPorId String?
+  editadoPor   Usuario?  @relation("PagamentoEditadoPor", fields: [editadoPorId], references: [id])
 }
 
 model Produto {

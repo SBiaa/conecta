@@ -1,7 +1,7 @@
 const prisma = require('../db')
 const { intervaloDoMes, intervaloDoDia } = require('../utils/mes')
 
-const FORMAS_PAGAMENTO = ['DINHEIRO', 'PIX', 'CARTAO']
+const FORMAS_PAGAMENTO = ['DINHEIRO', 'PIX', 'CARTAO', 'ABONADO']
 
 function somar(valores) {
   return valores.reduce((total, valor) => total + Number(valor), 0)
@@ -20,13 +20,25 @@ function totalizarPorCategoria(despesas) {
   return Array.from(porCategoria.values()).sort((a, b) => b.total - a.total)
 }
 
-// Soma por forma de pagamento, sempre devolvendo as três chaves — assim a tela
+// Soma por forma de pagamento, sempre devolvendo as quatro chaves — assim a tela
 // mostra "R$ 0,00" no que não entrou em vez de omitir a linha.
 function totalizarPorForma(lancamentos) {
   const porForma = Object.fromEntries(FORMAS_PAGAMENTO.map((forma) => [forma, 0]))
   lancamentos.forEach(({ formaPagamento, valor }) => {
     const chave = FORMAS_PAGAMENTO.includes(formaPagamento) ? formaPagamento : 'DINHEIRO'
     porForma[chave] += Number(valor)
+  })
+  return porForma
+}
+
+// Conta lançamentos por forma de pagamento — Abonado sempre soma R$0 em
+// totalizarPorForma, então a quantidade é o que dá visibilidade de quantas
+// alunas foram abonadas no período.
+function contarPorForma(lancamentos) {
+  const porForma = Object.fromEntries(FORMAS_PAGAMENTO.map((forma) => [forma, 0]))
+  lancamentos.forEach(({ formaPagamento }) => {
+    const chave = FORMAS_PAGAMENTO.includes(formaPagamento) ? formaPagamento : 'DINHEIRO'
+    porForma[chave] += 1
   })
   return porForma
 }
@@ -162,6 +174,7 @@ const caixaDoDia = async (req, res) => {
       entradas: {
         total: totalEntradas,
         porForma: totalizarPorForma(entradas),
+        quantidadePorForma: contarPorForma(entradas),
         itens: entradas
       },
       saidas: {
@@ -226,10 +239,12 @@ const fechamentoDoMes = async (req, res) => {
     const totalEntradas = mensalidades + inscricoes + totalVendas
     const totalSaidas = somar(despesas.map((d) => d.valor))
 
-    const porForma = totalizarPorForma([
+    const lancamentosDoMes = [
       ...pagamentosPagos.map((p) => ({ formaPagamento: p.formaPagamento, valor: p.valor })),
       ...vendas.map((v) => ({ formaPagamento: v.formaPagamento, valor: v.valorTotal }))
-    ])
+    ]
+    const porForma = totalizarPorForma(lancamentosDoMes)
+    const quantidadePorForma = contarPorForma(lancamentosDoMes)
 
     const pagas = cobrancasDoMes.filter((c) => c.status === 'PAGA')
     const emAberto = cobrancasDoMes.filter((c) => c.status !== 'PAGA')
@@ -242,7 +257,8 @@ const fechamentoDoMes = async (req, res) => {
           inscricoes,
           vendas: totalVendas,
           total: totalEntradas,
-          porForma
+          porForma,
+          quantidadePorForma
         },
         saidas: { total: totalSaidas, porCategoria: totalizarPorCategoria(despesas) },
         saldo: totalEntradas - totalSaidas

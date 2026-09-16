@@ -4,7 +4,7 @@ const { apenasData } = require('../utils/mes')
 
 const EXAMES_MEDICOS_VALIDOS = ['APTO', 'NAO_APTO', 'AGUARDANDO']
 const FREQUENCIAS_VALIDAS = Object.keys(PLANOS).map(Number)
-const FORMAS_PAGAMENTO_VALIDAS = ['DINHEIRO', 'PIX', 'CARTAO']
+const FORMAS_PAGAMENTO_VALIDAS = ['DINHEIRO', 'PIX', 'CARTAO', 'ABONADO']
 
 function mesDeReferencia(data) {
   return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`
@@ -15,7 +15,7 @@ function mesDeReferencia(data) {
 function montarDadosInscricao(inscricao) {
   if (!inscricao) return { dados: null }
 
-  const valor = Number(inscricao.valor)
+  let valor = Number(inscricao.valor)
   if (isNaN(valor) || valor < 0) {
     return { erro: 'O valor da inscrição não pode ser negativo' }
   }
@@ -23,7 +23,11 @@ function montarDadosInscricao(inscricao) {
   const status = inscricao.status === 'PAGA' ? 'PAGA' : 'PENDENTE'
 
   if (status === 'PAGA' && !FORMAS_PAGAMENTO_VALIDAS.includes(inscricao.formaPagamento)) {
-    return { erro: 'Informe a forma de pagamento da inscrição (DINHEIRO, PIX ou CARTAO)' }
+    return { erro: 'Informe a forma de pagamento da inscrição (DINHEIRO, PIX, CARTAO ou ABONADO)' }
+  }
+
+  if (status === 'PAGA' && inscricao.formaPagamento === 'ABONADO') {
+    valor = 0
   }
 
   const hoje = new Date()

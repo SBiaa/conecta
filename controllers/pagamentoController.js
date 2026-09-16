@@ -47,6 +47,7 @@ const listar = async (req, res) => {
         vencimento: true,
         dataPagamento: true,
         formaPagamento: true,
+        editadoEm: true,
         matricula: { select: SELECT_TURMAS_MATRICULA }
       }
     })
@@ -77,12 +78,13 @@ const marcarComoPaga = async (req, res) => {
     return res.status(400).json({ erro: 'O campo "formaPagamento" é obrigatório' })
   }
 
-  if (!['DINHEIRO', 'PIX', 'CARTAO'].includes(formaPagamento)) {
-    return res.status(400).json({ erro: 'formaPagamento inválida. Use DINHEIRO, PIX ou CARTAO' })
+  if (!['DINHEIRO', 'PIX', 'CARTAO', 'ABONADO'].includes(formaPagamento)) {
+    return res.status(400).json({ erro: 'formaPagamento inválida. Use DINHEIRO, PIX, CARTAO ou ABONADO' })
   }
 
-  // 4. validação: valor obrigatório (0 é aceito — isenção)
-  if (valor === undefined || valor === null || valor === '' || isNaN(Number(valor)) || Number(valor) < 0) {
+  // 4. validação: valor obrigatório (0 é aceito — isenção). Abonado é sempre isenção total.
+  const valorFinal = formaPagamento === 'ABONADO' ? 0 : Number(valor)
+  if (formaPagamento !== 'ABONADO' && (valor === undefined || valor === null || valor === '' || isNaN(valorFinal) || valorFinal < 0)) {
     return res.status(400).json({ erro: 'O campo "valor" é obrigatório e não pode ser negativo' })
   }
 
@@ -93,7 +95,57 @@ const marcarComoPaga = async (req, res) => {
         status: 'PAGA',
         dataPagamento: data,
         formaPagamento,
-        valor
+        valor: valorFinal
+      }
+    })
+    res.json(pagamento)
+  } catch (erro) {
+    if (erro.code === 'P2025') {
+      return res.status(404).json({ erro: 'Pagamento não encontrado' })
+    }
+    console.error(erro)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
+// Corrige um pagamento já lançado (valor digitado errado, forma de pagamento
+// ou mês/vencimento errados) — diferente de marcarComoPaga, não mexe no status
+// nem exige dataPagamento, e funciona tanto pra PENDENTE quanto pra PAGA.
+const atualizar = async (req, res) => {
+  const { id } = req.params
+  const { valor, formaPagamento, mesReferencia, vencimento } = req.body
+
+  if (formaPagamento !== undefined && formaPagamento !== null && !['DINHEIRO', 'PIX', 'CARTAO', 'ABONADO'].includes(formaPagamento)) {
+    return res.status(400).json({ erro: 'formaPagamento inválida. Use DINHEIRO, PIX, CARTAO ou ABONADO' })
+  }
+
+  const ehAbonado = formaPagamento === 'ABONADO'
+  if (valor !== undefined && !ehAbonado && (isNaN(Number(valor)) || Number(valor) < 0)) {
+    return res.status(400).json({ erro: 'O campo "valor" não pode ser negativo' })
+  }
+
+  if (mesReferencia !== undefined && mesReferencia.trim() === '') {
+    return res.status(400).json({ erro: 'O campo "mesReferencia" não pode ficar vazio' })
+  }
+
+  let dataVencimento
+  if (vencimento !== undefined) {
+    dataVencimento = new Date(vencimento)
+    if (isNaN(dataVencimento.getTime())) {
+      return res.status(400).json({ erro: 'vencimento inválido. Use o formato AAAA-MM-DD' })
+    }
+  }
+
+  try {
+    const pagamento = await prisma.pagamento.update({
+      where: { id: Number(id) },
+      data: {
+        ...(valor !== undefined ? { valor: ehAbonado ? 0 : Number(valor) } : {}),
+        ...(formaPagamento !== undefined ? { formaPagamento } : {}),
+        ...(mesReferencia !== undefined ? { mesReferencia: mesReferencia.trim() } : {}),
+        ...(dataVencimento ? { vencimento: dataVencimento } : {}),
+        editadoEm: new Date(),
+        editadoPorId: req.usuario.id
       }
     })
     res.json(pagamento)
@@ -267,4 +319,4 @@ const atrasados = async (req, res) => {
   }
 }
 
-module.exports = { listar, marcarComoPaga, gerarMes, gerarParaMatricula, atrasados }
+module.exports = { listar, marcarComoPaga, atualizar, gerarMes, gerarParaMatricula, atrasados }

@@ -5,6 +5,7 @@ const pagamentoController = require('../controllers/pagamentoController')
 router.get('/', pagamentoController.listar)
 router.get('/atrasados', pagamentoController.atrasados)
 router.patch('/:id/pagar', pagamentoController.marcarComoPaga)
+router.patch('/:id', pagamentoController.atualizar)
 router.post('/gerar-mes', pagamentoController.gerarMes)
 router.post('/gerar-matricula', pagamentoController.gerarParaMatricula)
 
