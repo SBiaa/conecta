@@ -73,8 +73,8 @@ enum LocalDor {
 model Usuario {
   id        String   @id @default(uuid())
   nome      String
-  cpf       String   @unique
-  senha     String
+  cpf       String?  @unique // dependente (criança) pode não ter CPF
+  senha     String?          // dependente não tem login: quem acessa é o responsável
   email     String?  @unique
   telefone  String?
   fotoUrl   String?  // data URL (base64) da foto de perfil, já redimensionada no navegador
@@ -105,6 +105,16 @@ cep         String?
   avaliacoes       Avaliacao[]
   avaliacoesFeitas Avaliacao[] @relation("AvaliacaoRegistradaPor")
   pagamentosEditados Pagamento[] @relation("PagamentoEditadoPor")
+
+  // Criança (ou outro dependente) cadastrada como pessoa própria, ligada ao
+  // adulto responsável. Matrícula, presença e nível ficam no dependente; o
+  // responsável só enxerga. Um adulto sem responsável continua como antes.
+  responsavelId String?
+  responsavel   Usuario?  @relation("ResponsavelDependente", fields: [responsavelId], references: [id])
+  dependentes   Usuario[] @relation("ResponsavelDependente")
+
+  niveisNatacao        NivelNatacaoRegistro[]
+  niveisNatacaoFeitos  NivelNatacaoRegistro[] @relation("NivelNatacaoRegistradoPor")
 }
 
 model Projeto {
@@ -357,5 +367,30 @@ model Avaliacao {
   editadoEm  DateTime @updatedAt
 
   @@unique([usuarioId, data])
+  @@index([usuarioId, data])
+}
+
+enum NivelNatacao {
+  ADAPTACAO      // adaptação ao meio líquido
+  INICIANTE
+  INTERMEDIARIO
+  AVANCADO
+}
+
+// Nível da criança na natação. Cada linha e uma mudanca de nivel (ou uma
+// reavaliacao); o nivel atual e o registro mais recente. Fica no Usuario, e nao
+// na Matricula, pelo mesmo motivo do RegistroSaude: a evolucao nao some quando
+// a matricula encerra. Quem registra e a professora da turma ou a coordenacao.
+model NivelNatacaoRegistro {
+  id              Int          @id @default(autoincrement())
+  usuarioId       String
+  usuario         Usuario      @relation(fields: [usuarioId], references: [id])
+  data            DateTime     @db.Date
+  nivel           NivelNatacao
+  observacao      String?
+  registradoPorId String
+  registradoPor   Usuario      @relation("NivelNatacaoRegistradoPor", fields: [registradoPorId], references: [id])
+  criadoEm        DateTime     @default(now())
+
   @@index([usuarioId, data])
 }

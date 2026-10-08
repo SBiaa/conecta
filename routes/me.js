@@ -6,7 +6,9 @@ const {
   meusMatriculas,
   minhaFrequencia,
   atualizarFoto,
-  removerFoto
+  removerFoto,
+  meusDependentes,
+  meuDependente
 } = require('../controllers/meController')
 const saudeController = require('../controllers/saudeController')
 
@@ -19,5 +21,7 @@ router.get('/frequencia', minhaFrequencia)
 router.get('/saude', saudeController.meusRegistros)
 router.get('/relatorio', saudeController.meuRelatorio)
 router.get('/avaliacoes', saudeController.minhasAvaliacoes)
+router.get('/dependentes', meusDependentes)
+router.get('/dependentes/:id', meuDependente)
 
 module.exports = router

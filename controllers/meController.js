@@ -1,4 +1,5 @@
 const prisma = require('../db')
+const { historicoDeNivel } = require('./natacaoController')
 
 const meusDados = async (req, res) => {
   const usuarioId = req.usuario.id
@@ -37,10 +38,7 @@ const meusDados = async (req, res) => {
   }
 }
 
-const meusPagamentos = async (req, res) => {
-  const usuarioId = req.usuario.id
-
-  try {
+async function pagamentosDe(usuarioId) {
     const pagamentos = await prisma.pagamento.findMany({
       where: {
         matricula: { usuarioId }
@@ -66,24 +64,24 @@ const meusPagamentos = async (req, res) => {
         }
       }
     })
-    res.json(
-      pagamentos.map(({ matricula, ...pagamento }) => ({
-        ...pagamento,
-        matricula: {
-          turmas: matricula.turmasVinculadas.map((vinculo) => ({ ...vinculo.turma, diasContratados: vinculo.dias }))
-        }
-      }))
-    )
+    return pagamentos.map(({ matricula, ...pagamento }) => ({
+      ...pagamento,
+      matricula: {
+        turmas: matricula.turmasVinculadas.map((vinculo) => ({ ...vinculo.turma, diasContratados: vinculo.dias }))
+      }
+    }))
+}
+
+const meusPagamentos = async (req, res) => {
+  try {
+    res.json(await pagamentosDe(req.usuario.id))
   } catch (erro) {
     console.error(erro)
     res.status(500).json({ erro: 'Erro interno do servidor' })
   }
 }
 
-const meusMatriculas = async (req, res) => {
-  const usuarioId = req.usuario.id
-
-  try {
+async function matriculasDe(usuarioId) {
     const matriculas = await prisma.matricula.findMany({
       where: {
         usuarioId,
@@ -110,22 +108,22 @@ const meusMatriculas = async (req, res) => {
         }
       }
     })
-    res.json(
-      matriculas.map(({ turmasVinculadas, ...matricula }) => ({
-        ...matricula,
-        turmas: turmasVinculadas.map((vinculo) => ({ ...vinculo.turma, diasContratados: vinculo.dias }))
-      }))
-    )
+    return matriculas.map(({ turmasVinculadas, ...matricula }) => ({
+      ...matricula,
+      turmas: turmasVinculadas.map((vinculo) => ({ ...vinculo.turma, diasContratados: vinculo.dias }))
+    }))
+}
+
+const meusMatriculas = async (req, res) => {
+  try {
+    res.json(await matriculasDe(req.usuario.id))
   } catch (erro) {
     console.error(erro)
     res.status(500).json({ erro: 'Erro interno do servidor' })
   }
 }
 
-const minhaFrequencia = async (req, res) => {
-  const usuarioId = req.usuario.id
-
-  try {
+async function frequenciaDe(usuarioId) {
     const matriculas = await prisma.matricula.findMany({
       where: { usuarioId, ativa: true },
       select: {
@@ -146,7 +144,7 @@ const minhaFrequencia = async (req, res) => {
       orderBy: { data: 'desc' }
     })
 
-    const turmas = matriculas.flatMap((matricula) =>
+    return matriculas.flatMap((matricula) =>
       matricula.turmasVinculadas.map(({ turma }) => {
         const registros = presencas
           .filter((p) => p.matriculaId === matricula.id && p.turmaId === turma.id)
@@ -167,8 +165,91 @@ const minhaFrequencia = async (req, res) => {
         }
       })
     )
+}
 
-    res.json(turmas)
+const minhaFrequencia = async (req, res) => {
+  try {
+    res.json(await frequenciaDe(req.usuario.id))
+  } catch (erro) {
+    console.error(erro)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
+/* ---------- dependentes (filhos) ---------- */
+
+// O responsável só enxerga: quem registra presença e nível é a professora ou a
+// coordenação. Um adulto sem dependentes recebe lista vazia.
+const meusDependentes = async (req, res) => {
+  try {
+    const dependentes = await prisma.usuario.findMany({
+      where: { responsavelId: req.usuario.id },
+      orderBy: { nome: 'asc' },
+      select: {
+        id: true,
+        nome: true,
+        fotoUrl: true,
+        dataNascimento: true,
+        matriculas: {
+          where: { ativa: true },
+          select: {
+            turmasVinculadas: {
+              select: { turma: { select: { nome: true, projeto: { select: { nome: true } } } } }
+            }
+          }
+        }
+      }
+    })
+
+    const niveis = await prisma.nivelNatacaoRegistro.findMany({
+      where: { usuarioId: { in: dependentes.map((d) => d.id) } },
+      orderBy: [{ data: 'desc' }, { id: 'desc' }],
+      select: { usuarioId: true, nivel: true, data: true }
+    })
+
+    res.json(
+      dependentes.map(({ matriculas, ...dependente }) => {
+        const ultimo = niveis.find((n) => n.usuarioId === dependente.id)
+        return {
+          ...dependente,
+          projetos: [
+            ...new Set(
+              matriculas.flatMap((m) => m.turmasVinculadas.map((v) => v.turma.projeto.nome))
+            )
+          ],
+          nivelNatacao: ultimo ? ultimo.nivel : null
+        }
+      })
+    )
+  } catch (erro) {
+    console.error(erro)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
+// Perfil completo da criança para o responsável. 404 (e não 403) quando a
+// pessoa não é dependente dele, pra não revelar que o id existe.
+const meuDependente = async (req, res) => {
+  const { id } = req.params
+
+  try {
+    const dependente = await prisma.usuario.findFirst({
+      where: { id, responsavelId: req.usuario.id },
+      select: { id: true, nome: true, fotoUrl: true, dataNascimento: true, tomaMedicamento: true, qualMedicamento: true }
+    })
+
+    if (!dependente) {
+      return res.status(404).json({ erro: 'Dependente não encontrado' })
+    }
+
+    const [matriculas, frequencia, pagamentos, natacao] = await Promise.all([
+      matriculasDe(id),
+      frequenciaDe(id),
+      pagamentosDe(id),
+      historicoDeNivel(id)
+    ])
+
+    res.json({ ...dependente, matriculas, frequencia, pagamentos, natacao })
   } catch (erro) {
     console.error(erro)
     res.status(500).json({ erro: 'Erro interno do servidor' })
@@ -221,5 +302,7 @@ module.exports = {
   meusMatriculas,
   minhaFrequencia,
   atualizarFoto,
-  removerFoto
+  removerFoto,
+  meusDependentes,
+  meuDependente
 }

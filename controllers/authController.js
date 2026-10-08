@@ -10,7 +10,7 @@ const login = async (req, res) => {
       where: { cpf }
     })
 
-    if (!usuario) {
+    if (!usuario || !usuario.senha) {
       return res.status(401).json({ erro: 'CPF ou senha inválidos' })
     }
 

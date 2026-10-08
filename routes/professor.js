@@ -2,6 +2,7 @@ const express = require('express')
 const router = express.Router()
 const professorController = require('../controllers/professorController')
 const saudeController = require('../controllers/saudeController')
+const natacaoController = require('../controllers/natacaoController')
 
 router.get('/turmas', professorController.minhasTurmas)
 router.get('/turmas/:turmaId/chamada', professorController.obterChamada)
@@ -14,5 +15,9 @@ router.delete('/alunas/:usuarioId/registros-saude/:registroId', saudeController.
 router.get('/alunas/:usuarioId/avaliacoes', saudeController.listarAvaliacoes)
 router.post('/alunas/:usuarioId/avaliacoes', saudeController.registrarAvaliacao)
 router.delete('/alunas/:usuarioId/avaliacoes/:avaliacaoId', saudeController.apagarAvaliacao)
+router.get('/turmas/:turmaId/niveis-natacao', natacaoController.niveisDaTurma)
+router.get('/alunos/:usuarioId/niveis-natacao', natacaoController.listar)
+router.post('/alunos/:usuarioId/niveis-natacao', natacaoController.registrar)
+router.delete('/alunos/:usuarioId/niveis-natacao/:registroId', natacaoController.apagar)
 
 module.exports = router

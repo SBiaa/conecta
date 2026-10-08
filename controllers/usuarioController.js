@@ -45,10 +45,12 @@ const listar = async (req, res) => {
         telefone: true,
         papel: true,
         status: true,
-        criadoEm: true
+        criadoEm: true,
+        responsavel: { select: { id: true, nome: true } },
+        _count: { select: { dependentes: true } }
       }
     })
-    res.json(usuarios)
+    res.json(usuarios.map(({ _count, ...u }) => ({ ...u, totalDependentes: _count.dependentes })))
   } catch (erro) {
     console.error(erro)
     res.status(500).json({ erro: 'Erro interno do servidor' })
@@ -82,6 +84,11 @@ const buscarPorId = async (req, res) => {
         bairro: true,
         cidade: true,
         uf: true,
+        responsavel: { select: { id: true, nome: true, telefone: true } },
+        dependentes: {
+          orderBy: { nome: 'asc' },
+          select: { id: true, nome: true, dataNascimento: true }
+        },
         matriculas: {
           select: {
             id: true,
@@ -143,31 +150,51 @@ const criar = async (req, res) => {
     rg,
     dataNascimento,
     tomaMedicamento,
-    qualMedicamento
+    qualMedicamento,
+    responsavelId
   } = req.body
 
   if (!nome || nome.trim() === '') {
     return res.status(400).json({ erro: 'O campo "nome" é obrigatório' })
   }
 
-  if (!cpf || cpf.trim() === '') {
+  // Dependente (criança) é ligado a um responsável e não tem login: CPF
+  // opcional, sem senha. Para todo o resto o CPF continua obrigatório.
+  const ehDependente = Boolean(responsavelId)
+  const cpfLimpo = typeof cpf === 'string' ? cpf.trim() : ''
+
+  if (!ehDependente && cpfLimpo === '') {
     return res.status(400).json({ erro: 'O campo "cpf" é obrigatório' })
   }
 
-  const senhaFoiGerada = !senha || senha.trim() === '' || papel === 'ASSOCIADO'
+  if (ehDependente) {
+    const responsavel = await prisma.usuario.findUnique({
+      where: { id: responsavelId },
+      select: { id: true, responsavelId: true }
+    })
+    if (!responsavel) {
+      return res.status(400).json({ erro: 'Responsável não encontrado' })
+    }
+    if (responsavel.responsavelId) {
+      return res.status(400).json({ erro: 'O responsável não pode ser, ele mesmo, um dependente' })
+    }
+  }
+
+  const senhaFoiGerada = !ehDependente && (!senha || senha.trim() === '' || papel === 'ASSOCIADO')
   const senhaFinal = senhaFoiGerada ? gerarSenhaAmigavel() : senha
 
   try {
-    const senhaCriptografada = await bcrypt.hash(senhaFinal, 10)
+    const senhaCriptografada = ehDependente ? null : await bcrypt.hash(senhaFinal, 10)
 
     const usuario = await prisma.usuario.create({
       data: {
         nome: nome.trim(),
-        cpf: cpf.trim(),
+        cpf: cpfLimpo === '' ? null : cpfLimpo,
         senha: senhaCriptografada,
+        responsavelId: ehDependente ? responsavelId : undefined,
         email,
         telefone,
-        papel,
+        papel: ehDependente ? 'ASSOCIADO' : papel,
         cep,
         logradouro,
         numero,
@@ -191,6 +218,7 @@ const criar = async (req, res) => {
       papel: usuario.papel,
       status: usuario.status,
       criadoEm: usuario.criadoEm,
+      responsavelId: usuario.responsavelId,
       ...(senhaFoiGerada ? { senhaInicial: senhaFinal } : {})
     })
   } catch (erro) {
@@ -220,19 +248,50 @@ const atualizar = async (req, res) => {
     complemento,
     bairro,
     cidade,
-    uf
+    uf,
+    responsavelId
   } = req.body
 
-  if (cpf !== undefined && cpf.trim() === '') {
-    return res.status(400).json({ erro: 'O campo "cpf" não pode ficar vazio' })
-  }
-
   try {
+    const atual = await prisma.usuario.findUnique({
+      where: { id },
+      select: { responsavelId: true, _count: { select: { dependentes: true } } }
+    })
+    if (!atual) {
+      return res.status(404).json({ erro: 'Usuário não encontrado' })
+    }
+
+    // responsavelId: string vincula, null desvincula, ausente não mexe.
+    if (responsavelId) {
+      if (responsavelId === id) {
+        return res.status(400).json({ erro: 'Uma pessoa não pode ser responsável por ela mesma' })
+      }
+      if (atual._count.dependentes > 0) {
+        return res.status(400).json({ erro: 'Quem tem dependentes não pode ser dependente de outra pessoa' })
+      }
+      const responsavel = await prisma.usuario.findUnique({
+        where: { id: responsavelId },
+        select: { responsavelId: true }
+      })
+      if (!responsavel) {
+        return res.status(400).json({ erro: 'Responsável não encontrado' })
+      }
+      if (responsavel.responsavelId) {
+        return res.status(400).json({ erro: 'O responsável não pode ser, ele mesmo, um dependente' })
+      }
+    }
+
+    const seraDependente = responsavelId === undefined ? Boolean(atual.responsavelId) : Boolean(responsavelId)
+    if (cpf !== undefined && cpf.trim() === '' && !seraDependente) {
+      return res.status(400).json({ erro: 'O campo "cpf" não pode ficar vazio' })
+    }
+
     const usuario = await prisma.usuario.update({
       where: { id },
       data: {
         nome,
-        cpf: cpf !== undefined ? cpf.trim() : undefined,
+        cpf: cpf !== undefined ? (cpf.trim() === '' ? null : cpf.trim()) : undefined,
+        responsavelId,
         telefone,
         email,
         status,
@@ -282,6 +341,11 @@ const atualizarSenha = async (req, res) => {
   }
 
   try {
+    const alvo = await prisma.usuario.findUnique({ where: { id }, select: { responsavelId: true } })
+    if (alvo?.responsavelId) {
+      return res.status(400).json({ erro: 'Dependente não tem login: quem acessa é o responsável' })
+    }
+
     const senhaCriptografada = await bcrypt.hash(senhaFinal, 10)
 
     await prisma.usuario.update({
@@ -320,6 +384,9 @@ function descreverVinculosUsuario(v) {
   }
   if (v.avaliacoes > 0) {
     partes.push(`${v.avaliacoes} ${v.avaliacoes === 1 ? 'avaliação física' : 'avaliações físicas'}`)
+  }
+  if (v.niveisNatacao > 0) {
+    partes.push(`${v.niveisNatacao} ${v.niveisNatacao === 1 ? 'nível de natação' : 'níveis de natação'}`)
   }
   if (v.posts > 0) {
     partes.push(`${v.posts} ${v.posts === 1 ? 'publicação' : 'publicações'} no mural`)
@@ -362,6 +429,9 @@ const remover = async (req, res) => {
         turmasComoProfessor: { select: { id: true } },
         presencasRegistradas: { select: { id: true } },
         avaliacoesFeitas: { select: { id: true } },
+        niveisNatacaoFeitos: { select: { id: true } },
+        dependentes: { select: { id: true } },
+        niveisNatacao: { select: { id: true } },
         registrosSaude: { select: { id: true } },
         avaliacoes: { select: { id: true } },
         posts: { select: { id: true } },
@@ -388,6 +458,15 @@ const remover = async (req, res) => {
       responsabilidades.push(`registrou ${n} ${n === 1 ? 'avaliação física' : 'avaliações físicas'} de outras pessoas`)
     }
 
+    if (usuario.niveisNatacaoFeitos.length > 0) {
+      const n = usuario.niveisNatacaoFeitos.length
+      responsabilidades.push(`registrou ${n} ${n === 1 ? 'nível de natação' : 'níveis de natação'} de outras pessoas`)
+    }
+    if (usuario.dependentes.length > 0) {
+      const n = usuario.dependentes.length
+      responsabilidades.push(`é responsável por ${n} ${n === 1 ? 'dependente' : 'dependentes'}`)
+    }
+
     if (responsabilidades.length > 0) {
       return res.status(409).json({
         bloqueioPermanente: true,
@@ -407,6 +486,7 @@ const remover = async (req, res) => {
       valorPago: pagos.reduce((soma, pagamento) => soma + Number(pagamento.valor), 0),
       registrosSaude: usuario.registrosSaude.length,
       avaliacoes: usuario.avaliacoes.length,
+      niveisNatacao: usuario.niveisNatacao.length,
       posts: usuario.posts.length,
       comentarios: usuario.comentarios.length,
       compras: usuario.compras.length
@@ -414,7 +494,7 @@ const remover = async (req, res) => {
 
     const temHistorico = [
       vinculos.matriculas, vinculos.presencas, vinculos.pagamentos, vinculos.registrosSaude,
-      vinculos.avaliacoes, vinculos.posts, vinculos.comentarios, vinculos.compras
+      vinculos.avaliacoes, vinculos.niveisNatacao, vinculos.posts, vinculos.comentarios, vinculos.compras
     ].some((quantidade) => quantidade > 0)
 
     if (temHistorico && !forcar) {
@@ -434,6 +514,7 @@ const remover = async (req, res) => {
       prisma.registroSaude.deleteMany({ where: { usuarioId: id } }),
       prisma.registroSaude.updateMany({ where: { registradoPorId: id }, data: { registradoPorId: null } }),
       prisma.avaliacao.deleteMany({ where: { usuarioId: id } }),
+      prisma.nivelNatacaoRegistro.deleteMany({ where: { usuarioId: id } }),
       prisma.reacao.deleteMany({ where: { usuarioId: id } }),
       prisma.comentario.deleteMany({ where: { autorId: id } }),
       prisma.post.deleteMany({ where: { autorId: id } }),
