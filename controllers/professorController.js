@@ -176,4 +176,61 @@ const frequenciaTurma = async (req, res) => {
   }
 }
 
-module.exports = { minhasTurmas, obterChamada, registrarChamada, frequenciaTurma }
+// Lista de chamada em papel: nomes das alunas ativas + os dias de aula do mês,
+// pra professora imprimir e marcar à mão (sem depender de celular/internet na quadra).
+const listaMensal = async (req, res) => {
+  const turmaId = Number(req.params.turmaId)
+  const mes = String(req.query.mes || '')
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(mes)
+
+  if (!match) {
+    return res.status(400).json({ erro: 'Informe o mês no formato AAAA-MM' })
+  }
+
+  const { turma, erro } = await turmaDoProfessor(turmaId, req)
+  if (erro === 404) return res.status(404).json({ erro: 'Turma não encontrada' })
+  if (erro === 403) return res.status(403).json({ erro: 'Acesso negado' })
+
+  try {
+    const ano = Number(match[1])
+    const mesIndice = Number(match[2]) - 1
+    const diasNoMes = new Date(ano, mesIndice + 1, 0).getDate()
+
+    const datas = []
+    for (let dia = 1; dia <= diasNoMes; dia++) {
+      const diaSemana = DIA_SEMANA_POR_INDICE[new Date(ano, mesIndice, dia).getDay()]
+      if (turma.dias.includes(diaSemana)) datas.push(dia)
+    }
+
+    const [projeto, professor, matriculas] = await Promise.all([
+      prisma.projeto.findUnique({ where: { id: turma.projetoId }, select: { nome: true } }),
+      turma.professorId
+        ? prisma.usuario.findUnique({ where: { id: turma.professorId }, select: { nome: true } })
+        : null,
+      prisma.matricula.findMany({
+        where: { turmasVinculadas: { some: { turmaId } }, ativa: true },
+        orderBy: { usuario: { nome: 'asc' } },
+        select: { id: true, usuario: { select: { nome: true } } }
+      })
+    ])
+
+    res.json({
+      turma: {
+        id: turma.id,
+        nome: turma.nome,
+        projeto: projeto ? projeto.nome : null,
+        professor: professor ? professor.nome : null,
+        dias: turma.dias,
+        horario: turma.horario
+      },
+      mes,
+      datas,
+      alunas: matriculas.map((m) => ({ matriculaId: m.id, nome: m.usuario.nome }))
+    })
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
+module.exports = { minhasTurmas, obterChamada, registrarChamada, frequenciaTurma, listaMensal }
