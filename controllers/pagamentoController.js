@@ -1,5 +1,5 @@
 const prisma = require('../db')
-const { PLANOS } = require('../config/planos')
+const { planosDoProjeto, projetoDaMatricula } = require('../utils/planos')
 
 const SELECT_TURMAS_MATRICULA = {
   usuario: { select: { nome: true } },
@@ -174,6 +174,8 @@ const gerarMes = async (req, res) => {
   }
 
   try {
+    const PLANOS = await planosDoProjeto(Number(projetoId))
+
     const matriculas = await prisma.matricula.findMany({
       where: {
         ativa: true,
@@ -197,10 +199,10 @@ const gerarMes = async (req, res) => {
     const matriculasParaGerar = matriculas.filter((matricula) => !matriculasComPagamento.has(matricula.id))
 
     const pendentes = matriculasParaGerar
-      .filter((matricula) => !PLANOS[matricula.frequenciaSemanal])
+      .filter((matricula) => PLANOS[matricula.frequenciaSemanal] === undefined)
       .map((matricula) => ({ matriculaId: matricula.id, nome: matricula.usuario.nome }))
 
-    const matriculasComValor = matriculasParaGerar.filter((matricula) => PLANOS[matricula.frequenciaSemanal])
+    const matriculasComValor = matriculasParaGerar.filter((matricula) => PLANOS[matricula.frequenciaSemanal] !== undefined)
 
     const criados = await prisma.$transaction(
       matriculasComValor.map((matricula) =>
@@ -256,8 +258,10 @@ const gerarParaMatricula = async (req, res) => {
       return res.status(404).json({ erro: 'Matrícula não encontrada' })
     }
 
+    const projetoId = await projetoDaMatricula(matricula.id)
+    const PLANOS = projetoId ? await planosDoProjeto(projetoId) : {}
     const valor = PLANOS[matricula.frequenciaSemanal]
-    if (!valor) {
+    if (valor === undefined) {
       return res.status(400).json({
         erro: 'Esta matrícula não tem um plano válido. Ajuste o plano antes de gerar a mensalidade.'
       })

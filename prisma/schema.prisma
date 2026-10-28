@@ -123,6 +123,10 @@ model Projeto {
   ativo    Boolean  @default(true)
   criadoEm DateTime @default(now())
 
+  // Valor da taxa de inscrição sugerido na matrícula deste projeto.
+  taxaInscricao Decimal @default(15) @db.Decimal(10, 2)
+  planos        PlanoProjeto[]
+
   turmas Turma[]
   posts  Post[]
 }
@@ -393,4 +397,18 @@ model NivelNatacaoRegistro {
   criadoEm        DateTime     @default(now())
 
   @@index([usuarioId, data])
+}
+
+// Preço da mensalidade por plano (aulas por semana) de cada projeto. A
+// Matricula guarda so as aulas por semana; o valor vem daqui na hora de gerar a
+// cobranca. Mudar o preco so vale para cobrancas geradas dali em diante: o
+// Pagamento ja carrega o valor que foi cobrado.
+model PlanoProjeto {
+  id             Int     @id @default(autoincrement())
+  projetoId      Int
+  projeto        Projeto @relation(fields: [projetoId], references: [id])
+  aulasPorSemana Int
+  valorMensal    Decimal @db.Decimal(10, 2)
+
+  @@unique([projetoId, aulasPorSemana])
 }

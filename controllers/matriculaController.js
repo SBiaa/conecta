@@ -1,9 +1,8 @@
 const prisma = require('../db')
-const { PLANOS } = require('../config/planos')
+const { planosDoProjeto } = require('../utils/planos')
 const { apenasData } = require('../utils/mes')
 
 const EXAMES_MEDICOS_VALIDOS = ['APTO', 'NAO_APTO', 'AGUARDANDO']
-const FREQUENCIAS_VALIDAS = Object.keys(PLANOS).map(Number)
 const FORMAS_PAGAMENTO_VALIDAS = ['DINHEIRO', 'PIX', 'CARTAO', 'ABONADO']
 
 function mesDeReferencia(data) {
@@ -51,8 +50,8 @@ function montarDadosInscricao(inscricao) {
 }
 
 function validarSelecaoTurmas(selecao, frequenciaSemanal) {
-  if (!FREQUENCIAS_VALIDAS.includes(Number(frequenciaSemanal))) {
-    return { erro: `O campo "frequenciaSemanal" deve ser um de: ${FREQUENCIAS_VALIDAS.join(', ')}` }
+  if (!Number.isInteger(Number(frequenciaSemanal)) || Number(frequenciaSemanal) < 1) {
+    return { erro: 'O campo "frequenciaSemanal" deve ser um número de aulas por semana' }
   }
 
   if (!Array.isArray(selecao) || selecao.length === 0) {
@@ -91,6 +90,12 @@ async function validarTurmasReais(itens, frequenciaSemanal) {
     if (diasInvalidos.length > 0) {
       return `A turma "${turma.id}" não acontece em: ${diasInvalidos.join(', ')}`
     }
+  }
+
+  // O plano precisa existir no projeto das turmas (valores editáveis em Financeiro > Valores).
+  const planos = await planosDoProjeto([...projetoIds][0])
+  if (planos[Number(frequenciaSemanal)] === undefined) {
+    return `Este projeto não tem plano de ${frequenciaSemanal} ${Number(frequenciaSemanal) === 1 ? 'aula' : 'aulas'} por semana. Cadastre o plano em Financeiro > Valores.`
   }
 
   const totalDias = itens.reduce((soma, item) => soma + item.dias.length, 0)
