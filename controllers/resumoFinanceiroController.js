@@ -224,7 +224,7 @@ const fechamentoDoMes = async (req, res) => {
         select: { valor: true, categoria: { select: { id: true, nome: true } } }
       }),
       prisma.pagamento.findMany({
-        where: { mesReferencia: mes },
+        where: { mesReferencia: mes, status: { not: 'CANCELADA' } },
         select: { tipo: true, valor: true, status: true }
       })
     ])

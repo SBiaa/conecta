@@ -26,6 +26,7 @@ enum Status {
 enum StatusPagamento {
   PENDENTE
   PAGA
+  CANCELADA // matrícula encerrada com a cobrança ainda em aberto: não é mais cobrada
 }
 
 enum FormaPagamento {

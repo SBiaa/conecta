@@ -113,7 +113,7 @@ const marcarComoPaga = async (req, res) => {
 // nem exige dataPagamento, e funciona tanto pra PENDENTE quanto pra PAGA.
 const atualizar = async (req, res) => {
   const { id } = req.params
-  const { valor, formaPagamento, mesReferencia, vencimento } = req.body
+  const { valor, formaPagamento, mesReferencia, vencimento, dataPagamento } = req.body
 
   if (formaPagamento !== undefined && formaPagamento !== null && !['DINHEIRO', 'PIX', 'CARTAO', 'ABONADO'].includes(formaPagamento)) {
     return res.status(400).json({ erro: 'formaPagamento inválida. Use DINHEIRO, PIX, CARTAO ou ABONADO' })
@@ -136,14 +136,51 @@ const atualizar = async (req, res) => {
     }
   }
 
+  let dataPaga
+  if (dataPagamento !== undefined) {
+    dataPaga = new Date(dataPagamento)
+    if (isNaN(dataPaga.getTime())) {
+      return res.status(400).json({ erro: 'dataPagamento inválida. Use o formato AAAA-MM-DD' })
+    }
+  }
+
   try {
+    const atual = await prisma.pagamento.findUnique({
+      where: { id: Number(id) },
+      select: { status: true, tipo: true, matriculaId: true, mesReferencia: true }
+    })
+    if (!atual) {
+      return res.status(404).json({ erro: 'Pagamento não encontrado' })
+    }
+
+    // Data do pagamento só existe em cobrança paga — numa pendente ela é
+    // preenchida ao registrar o pagamento.
+    if (dataPaga && atual.status !== 'PAGA') {
+      return res.status(400).json({ erro: 'Só é possível mudar a data do pagamento de uma cobrança paga' })
+    }
+
+    // Trocar o mês não pode criar duas mensalidades da mesma matrícula no mesmo mês.
+    const novoMes = mesReferencia !== undefined ? mesReferencia.trim() : undefined
+    if (novoMes && novoMes !== atual.mesReferencia && atual.tipo === 'MENSALIDADE') {
+      const conflito = await prisma.pagamento.findFirst({
+        where: { matriculaId: atual.matriculaId, mesReferencia: novoMes, tipo: 'MENSALIDADE', id: { not: Number(id) } },
+        select: { id: true }
+      })
+      if (conflito) {
+        return res.status(409).json({
+          erro: 'Já existe uma mensalidade desta matrícula para o mês escolhido. Se o pagamento foi lançado no mês errado, desfaça o pagamento e registre no mês certo.'
+        })
+      }
+    }
+
     const pagamento = await prisma.pagamento.update({
       where: { id: Number(id) },
       data: {
         ...(valor !== undefined ? { valor: ehAbonado ? 0 : Number(valor) } : {}),
         ...(formaPagamento !== undefined ? { formaPagamento } : {}),
-        ...(mesReferencia !== undefined ? { mesReferencia: mesReferencia.trim() } : {}),
+        ...(novoMes !== undefined ? { mesReferencia: novoMes } : {}),
         ...(dataVencimento ? { vencimento: dataVencimento } : {}),
+        ...(dataPaga ? { dataPagamento: dataPaga } : {}),
         editadoEm: new Date(),
         editadoPorId: req.usuario.id
       }
@@ -153,6 +190,52 @@ const atualizar = async (req, res) => {
     if (erro.code === 'P2025') {
       return res.status(404).json({ erro: 'Pagamento não encontrado' })
     }
+    console.error(erro)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
+// Desfaz um pagamento registrado por engano (ex.: lançado em novembro quando a
+// aluna pagou outubro): a cobrança volta a ficar pendente, sem data nem forma
+// de pagamento. Mensalidade volta ao valor do plano, porque o registro pode ter
+// mudado o valor (desconto, abonado = R$0).
+const desfazerPagamento = async (req, res) => {
+  const { id } = req.params
+
+  try {
+    const atual = await prisma.pagamento.findUnique({
+      where: { id: Number(id) },
+      select: { status: true, tipo: true, valor: true, matricula: { select: { id: true, frequenciaSemanal: true } } }
+    })
+    if (!atual) {
+      return res.status(404).json({ erro: 'Pagamento não encontrado' })
+    }
+    if (atual.status !== 'PAGA') {
+      return res.status(400).json({ erro: 'Só é possível desfazer uma cobrança que está paga' })
+    }
+
+    let valor = atual.valor
+    if (atual.tipo === 'MENSALIDADE') {
+      const projetoId = await projetoDaMatricula(atual.matricula.id)
+      const PLANOS = projetoId ? await planosDoProjeto(projetoId) : {}
+      if (PLANOS[atual.matricula.frequenciaSemanal] !== undefined) {
+        valor = PLANOS[atual.matricula.frequenciaSemanal]
+      }
+    }
+
+    const pagamento = await prisma.pagamento.update({
+      where: { id: Number(id) },
+      data: {
+        status: 'PENDENTE',
+        dataPagamento: null,
+        formaPagamento: null,
+        valor,
+        editadoEm: new Date(),
+        editadoPorId: req.usuario.id
+      }
+    })
+    res.json(pagamento)
+  } catch (erro) {
     console.error(erro)
     res.status(500).json({ erro: 'Erro interno do servidor' })
   }
@@ -190,6 +273,7 @@ const gerarMes = async (req, res) => {
       where: {
         mesReferencia,
         tipo: 'MENSALIDADE',
+        status: { not: 'CANCELADA' },
         matriculaId: { in: matriculas.map((matricula) => matricula.id) }
       },
       select: { matriculaId: true }
@@ -268,7 +352,7 @@ const gerarParaMatricula = async (req, res) => {
     }
 
     const jaExiste = await prisma.pagamento.findFirst({
-      where: { matriculaId: matricula.id, mesReferencia, tipo: 'MENSALIDADE' },
+      where: { matriculaId: matricula.id, mesReferencia, tipo: 'MENSALIDADE', status: { not: 'CANCELADA' } },
       select: { id: true }
     })
 
@@ -304,7 +388,10 @@ const atrasados = async (req, res) => {
       where: {
         status: 'PENDENTE',
         vencimento: { lt: new Date() },
-        ...(projetoId ? { matricula: { turmasVinculadas: { some: { turma: { projetoId: Number(projetoId) } } } } } : {})
+        matricula: {
+          ativa: true,
+          ...(projetoId ? { turmasVinculadas: { some: { turma: { projetoId: Number(projetoId) } } } } : {})
+        }
       },
       orderBy: { vencimento: 'asc' },
       select: {
@@ -323,4 +410,78 @@ const atrasados = async (req, res) => {
   }
 }
 
-module.exports = { listar, marcarComoPaga, atualizar, gerarMes, gerarParaMatricula, atrasados }
+// Mesmos atrasados, mas uma linha por aluna (matrícula), com a última presença —
+// pra coordenação decidir rápido quem parou de vir e encerrar a matrícula.
+const atrasadosPorAluna = async (req, res) => {
+  const { projetoId } = req.query
+
+  try {
+    const pagamentos = await prisma.pagamento.findMany({
+      where: {
+        status: 'PENDENTE',
+        vencimento: { lt: new Date() },
+        matricula: {
+          ativa: true,
+          ...(projetoId ? { turmasVinculadas: { some: { turma: { projetoId: Number(projetoId) } } } } : {})
+        }
+      },
+      orderBy: { vencimento: 'asc' },
+      select: { matriculaId: true, valor: true, vencimento: true, mesReferencia: true }
+    })
+
+    const porMatricula = new Map()
+    for (const p of pagamentos) {
+      const atual = porMatricula.get(p.matriculaId)
+      if (atual) {
+        atual.quantidade += 1
+        atual.total += Number(p.valor)
+        atual.meses.push(p.mesReferencia)
+      } else {
+        porMatricula.set(p.matriculaId, {
+          quantidade: 1,
+          total: Number(p.valor),
+          vencimentoMaisAntigo: p.vencimento,
+          meses: [p.mesReferencia]
+        })
+      }
+    }
+
+    const ids = [...porMatricula.keys()]
+    const [matriculas, presencas] = await Promise.all([
+      prisma.matricula.findMany({
+        where: { id: { in: ids } },
+        select: {
+          id: true,
+          dataInicio: true,
+          usuario: { select: { id: true, nome: true } },
+          turmasVinculadas: {
+            select: { turma: { select: { id: true, nome: true, projeto: { select: { id: true, nome: true } } } } }
+          }
+        }
+      }),
+      prisma.presenca.groupBy({
+        by: ['matriculaId'],
+        where: { matriculaId: { in: ids }, presente: true },
+        _max: { data: true }
+      })
+    ])
+    const ultimaPresenca = new Map(presencas.map((p) => [p.matriculaId, p._max.data]))
+
+    const resultado = matriculas.map((m) => ({
+      matriculaId: m.id,
+      dataInicio: m.dataInicio,
+      usuario: m.usuario,
+      turmas: m.turmasVinculadas.map((v) => v.turma),
+      ultimaPresenca: ultimaPresenca.get(m.id) ?? null,
+      ...porMatricula.get(m.id)
+    }))
+    resultado.sort((a, b) => a.usuario.nome.localeCompare(b.usuario.nome, 'pt-BR'))
+
+    res.json(resultado)
+  } catch (erro) {
+    console.error(erro)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
+module.exports = { listar, marcarComoPaga, atualizar, desfazerPagamento, gerarMes, gerarParaMatricula, atrasados, atrasadosPorAluna }

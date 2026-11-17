@@ -153,6 +153,52 @@ const criar = async (req, res) => {
   }
 }
 
+// Decisão da coordenação (nov/2026): ao encerrar a matrícula, o que estava em
+// aberto deixa de ser cobrado. Fica CANCELADA (não apaga) pra manter o histórico.
+// Se a aluna voltar, as mensalidades novas são geradas normalmente.
+function cancelarPendencias(tx, matriculaIds) {
+  return tx.pagamento.updateMany({
+    where: { matriculaId: { in: matriculaIds }, status: 'PENDENTE' },
+    data: { status: 'CANCELADA' }
+  })
+}
+
+// Encerra várias matrículas de uma vez — usado na tela "Atrasados por aluna".
+const encerrarEmLote = async (req, res) => {
+  const { matriculaIds } = req.body
+
+  if (!Array.isArray(matriculaIds) || matriculaIds.length === 0) {
+    return res.status(400).json({ erro: 'Informe "matriculaIds" com pelo menos uma matrícula' })
+  }
+
+  const ids = [...new Set(matriculaIds.map(Number))]
+  if (ids.some((id) => !Number.isInteger(id) || id <= 0)) {
+    return res.status(400).json({ erro: '"matriculaIds" deve ter só números de matrícula' })
+  }
+
+  try {
+    const resultado = await prisma.$transaction(async (tx) => {
+      const ativas = await tx.matricula.findMany({
+        where: { id: { in: ids }, ativa: true },
+        select: { id: true }
+      })
+      const idsAtivas = ativas.map((m) => m.id)
+      if (idsAtivas.length === 0) return { encerradas: 0, cobrancasCanceladas: 0 }
+
+      const canceladas = await cancelarPendencias(tx, idsAtivas)
+      await tx.matricula.updateMany({
+        where: { id: { in: idsAtivas } },
+        data: { ativa: false, encerradaEm: new Date() }
+      })
+      return { encerradas: idsAtivas.length, cobrancasCanceladas: canceladas.count }
+    })
+    res.json(resultado)
+  } catch (erro) {
+    console.error(erro)
+    res.status(500).json({ erro: 'Erro interno do servidor' })
+  }
+}
+
 const atualizar = async (req, res) => {
   const { id } = req.params
   const { ativa, exameMedico, turmas, frequenciaSemanal, inscricao } = req.body
@@ -216,6 +262,10 @@ const atualizar = async (req, res) => {
         await tx.pagamento.create({
           data: { ...dadosInscricao, matriculaId: Number(id) }
         })
+      }
+
+      if (encerrando) {
+        await cancelarPendencias(tx, [Number(id)])
       }
 
       return tx.matricula.update({
@@ -314,4 +364,4 @@ const remover = async (req, res) => {
   }
 }
 
-module.exports = { criar, atualizar, remover }
+module.exports = { criar, atualizar, remover, encerrarEmLote }

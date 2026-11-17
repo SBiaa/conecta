@@ -41,7 +41,8 @@ const meusDados = async (req, res) => {
 async function pagamentosDe(usuarioId) {
     const pagamentos = await prisma.pagamento.findMany({
       where: {
-        matricula: { usuarioId }
+        matricula: { usuarioId },
+        status: { not: 'CANCELADA' }
       },
       orderBy: { vencimento: 'desc' },
       select: {
