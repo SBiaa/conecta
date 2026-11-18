@@ -25,7 +25,7 @@ registro dessas entradas quando a conexão volta.
 | LED verde, LED vermelho, 2 resistores de 220 Ω, buzzer ativo 5 V | 1 de cada | R$ 5 |
 | Caixa plástica com tampa (sobrepor, à prova d'água se ficar exposta) | 1 | R$ 15–30 |
 | Botão de saída de controle de acesso (com contatos NA e NF) | 1 | R$ 15–30 |
-| Chaveiros NFC Mifare 13,56 MHz | 1 por aluna | R$ 1–3 cada |
+| Chaveiros NFC NTAG213 13,56 MHz (funcionam também no celular, ver `../portao-celular.md`) | 1 por aluna | R$ 1–3 cada |
 | **Fechadura** (ver abaixo) | 1 | R$ 120–400 |
 
 Total sem a fechadura: em torno de R$ 150–250.

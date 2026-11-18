@@ -1,4 +1,5 @@
 const express = require('express')
+const path = require('path')
 const cors = require('cors')
 require('dotenv').config()
 
@@ -44,6 +45,8 @@ app.use('/categorias-despesa', autenticar, exigirPapel('ADMIN'), categoriasDespe
 app.use('/financeiro', autenticar, exigirPapel('ADMIN'), financeiroRoutes)
 app.use('/portao', autenticarDispositivo, portaoRoutes)
 app.use('/acesso-portao', autenticar, exigirPapel('ADMIN'), acessoPortaoRoutes)
+// Tela do portão pra abrir num celular Android (Chrome) com NFC
+app.use('/tela-portao', express.static(path.join(__dirname, 'public', 'tela-portao')))
 
 app.get('/', (req, res) => {
   res.json({ mensagem: 'API Conecta funcionando!' })
