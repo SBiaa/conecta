@@ -4,11 +4,11 @@
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
-   provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-   provider = "postgresql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -72,40 +72,40 @@ enum LocalDor {
 }
 
 model Usuario {
-  id        String   @id @default(uuid())
-  nome      String
-  cpf       String?  @unique // dependente (criança) pode não ter CPF
-  senha     String?          // dependente não tem login: quem acessa é o responsável
-  email     String?  @unique
-  telefone  String?
-  fotoUrl   String?  // data URL (base64) da foto de perfil, já redimensionada no navegador
-  papel     Papel    @default(ASSOCIADO)
-  status    Status   @default(ATIVO)
-  criadoEm  DateTime @default(now())
-cep         String?
-  logradouro  String?   // a rua
-  numero      String?   // texto, não número — por causa de "123A", "s/n"
-  complemento String?
-  bairro      String?
-  cidade      String?
-  uf          String?   // o estado, 2 letras (SP, RJ...)
-  rg               String?
-  dataNascimento   DateTime?
-  tomaMedicamento  Boolean   @default(false)
-  qualMedicamento  String?
-  matriculas Matricula[]
-  turmasComoProfessor Turma[]    @relation("TurmaProfessor")
-  presencasRegistradas Presenca[] @relation("PresencaRegistradaPor")
-  posts Post[]
-  reacoes Reacao[]
-  comentarios Comentario[]
-  compras Venda[]
-  alturaCm         Int?   // altura em centimetros, pra calcular o IMC
-  registrosSaude   RegistroSaude[]
+  id                   String          @id @default(uuid())
+  nome                 String
+  cpf                  String?         @unique // dependente (criança) pode não ter CPF
+  senha                String? // dependente não tem login: quem acessa é o responsável
+  email                String?         @unique
+  telefone             String?
+  fotoUrl              String? // data URL (base64) da foto de perfil, já redimensionada no navegador
+  papel                Papel           @default(ASSOCIADO)
+  status               Status          @default(ATIVO)
+  criadoEm             DateTime        @default(now())
+  cep                  String?
+  logradouro           String? // a rua
+  numero               String? // texto, não número — por causa de "123A", "s/n"
+  complemento          String?
+  bairro               String?
+  cidade               String?
+  uf                   String? // o estado, 2 letras (SP, RJ...)
+  rg                   String?
+  dataNascimento       DateTime?
+  tomaMedicamento      Boolean         @default(false)
+  qualMedicamento      String?
+  matriculas           Matricula[]
+  turmasComoProfessor  Turma[]         @relation("TurmaProfessor")
+  presencasRegistradas Presenca[]      @relation("PresencaRegistradaPor")
+  posts                Post[]
+  reacoes              Reacao[]
+  comentarios          Comentario[]
+  compras              Venda[]
+  alturaCm             Int? // altura em centimetros, pra calcular o IMC
+  registrosSaude       RegistroSaude[]
   registrosSaudeFeitos RegistroSaude[] @relation("RegistroSaudeRegistradoPor")
-  avaliacoes       Avaliacao[]
-  avaliacoesFeitas Avaliacao[] @relation("AvaliacaoRegistradaPor")
-  pagamentosEditados Pagamento[] @relation("PagamentoEditadoPor")
+  avaliacoes           Avaliacao[]
+  avaliacoesFeitas     Avaliacao[]     @relation("AvaliacaoRegistradaPor")
+  pagamentosEditados   Pagamento[]     @relation("PagamentoEditadoPor")
 
   // Criança (ou outro dependente) cadastrada como pessoa própria, ligada ao
   // adulto responsável. Matrícula, presença e nível ficam no dependente; o
@@ -114,8 +114,14 @@ cep         String?
   responsavel   Usuario?  @relation("ResponsavelDependente", fields: [responsavelId], references: [id])
   dependentes   Usuario[] @relation("ResponsavelDependente")
 
-  niveisNatacao        NivelNatacaoRegistro[]
-  niveisNatacaoFeitos  NivelNatacaoRegistro[] @relation("NivelNatacaoRegistradoPor")
+  niveisNatacao       NivelNatacaoRegistro[]
+  niveisNatacaoFeitos NivelNatacaoRegistro[] @relation("NivelNatacaoRegistradoPor")
+
+  viagens           ViagemParticipante[]
+  viagemAvisos      ViagemAviso[]
+  viagemChecklist   ViagemChecklistMarcado[]
+  viagemMidias      ViagemMidia[]
+  viagemMidiasNotas ViagemMidia[]            @relation("ViagemMidiaAvaliadaPor")
 }
 
 model Projeto {
@@ -125,7 +131,7 @@ model Projeto {
   criadoEm DateTime @default(now())
 
   // Valor da taxa de inscrição sugerido na matrícula deste projeto.
-  taxaInscricao Decimal @default(15) @db.Decimal(10, 2)
+  taxaInscricao Decimal        @default(15) @db.Decimal(10, 2)
   planos        PlanoProjeto[]
 
   turmas Turma[]
@@ -140,11 +146,11 @@ model Turma {
   criadoEm  DateTime @default(now())
 
   matriculaTurmas MatriculaTurma[]
-    dias      DiaSemana[]
-  horario   String?
+  dias            DiaSemana[]
+  horario         String?
 
   professorId String?
-  professor   Usuario? @relation("TurmaProfessor", fields: [professorId], references: [id])
+  professor   Usuario?   @relation("TurmaProfessor", fields: [professorId], references: [id])
   presencas   Presenca[]
   posts       Post[]
 }
@@ -160,25 +166,25 @@ enum DiaSemana {
 }
 
 model Matricula {
-  id                Int       @id @default(autoincrement())
+  id                Int              @id @default(autoincrement())
   usuarioId         String
-  usuario           Usuario   @relation(fields: [usuarioId], references: [id])
+  usuario           Usuario          @relation(fields: [usuarioId], references: [id])
   turmasVinculadas  MatriculaTurma[]
   frequenciaSemanal Int?
-  ativa             Boolean   @default(true)
-  dataInicio        DateTime  @default(now())
+  ativa             Boolean          @default(true)
+  dataInicio        DateTime         @default(now())
   encerradaEm       DateTime?
-exameMedico  ExameMedico  @default(AGUARDANDO)
-  pagamentos Pagamento[]
-  presencas  Presenca[]
+  exameMedico       ExameMedico      @default(AGUARDANDO)
+  pagamentos        Pagamento[]
+  presencas         Presenca[]
 }
 
 model MatriculaTurma {
-  id          Int       @id @default(autoincrement())
+  id          Int         @id @default(autoincrement())
   matriculaId Int
-  matricula   Matricula @relation(fields: [matriculaId], references: [id])
+  matricula   Matricula   @relation(fields: [matriculaId], references: [id])
   turmaId     Int
-  turma       Turma     @relation(fields: [turmaId], references: [id])
+  turma       Turma       @relation(fields: [turmaId], references: [id])
   dias        DiaSemana[]
 
   @@unique([matriculaId, turmaId])
@@ -297,13 +303,13 @@ model Reacao {
 }
 
 model Comentario {
-  id        Int      @id @default(autoincrement())
-  postId    Int
-  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  autorId   String
-  autor     Usuario  @relation(fields: [autorId], references: [id])
-  conteudo  String
-  criadoEm  DateTime @default(now())
+  id       Int      @id @default(autoincrement())
+  postId   Int
+  post     Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  autorId  String
+  autor    Usuario  @relation(fields: [autorId], references: [id])
+  conteudo String
+  criadoEm DateTime @default(now())
 
   @@index([postId, criadoEm])
 }
@@ -314,10 +320,10 @@ model Comentario {
 // Quem registra e a professora da turma (ou a coordenacao) — igual a
 // Avaliacao. A associada so le o resultado no Meu Progresso.
 model RegistroSaude {
-  id         Int        @id @default(autoincrement())
-  usuarioId  String
-  usuario    Usuario    @relation(fields: [usuarioId], references: [id])
-  data       DateTime   @db.Date
+  id        Int      @id @default(autoincrement())
+  usuarioId String
+  usuario   Usuario  @relation(fields: [usuarioId], references: [id])
+  data      DateTime @db.Date
 
   // Quem mediu/lançou este registro — a professora, na balança da turma.
   // Fica opcional porque registros antigos foram digitados pela própria
@@ -326,9 +332,9 @@ model RegistroSaude {
   registradoPor   Usuario? @relation("RegistroSaudeRegistradoPor", fields: [registradoPorId], references: [id])
 
   peso       Decimal?   @db.Decimal(5, 2)
-  nivelDor   Int?       // 0 (sem dor) a 5 (dor forte)
+  nivelDor   Int? // 0 (sem dor) a 5 (dor forte)
   locaisDor  LocalDor[]
-  disposicao Int?       // 1 (muito mal) a 5 (muito bem)
+  disposicao Int? // 1 (muito mal) a 5 (muito bem)
   observacao String?
 
   // Composicao corporal: vem da balanca junto com o peso, na mesma pesagem.
@@ -338,11 +344,11 @@ model RegistroSaude {
   percentualAgua    Decimal? @db.Decimal(4, 1)
   massaMuscular     Decimal? @db.Decimal(5, 2) // kg
   massaOssea        Decimal? @db.Decimal(4, 2) // kg
-  gorduraVisceral   Int?                        // indice, 1 a 59
-  taxaMetabolica    Int?                        // kcal por dia
+  gorduraVisceral   Int? // indice, 1 a 59
+  taxaMetabolica    Int? // kcal por dia
 
-  criadoEm   DateTime   @default(now())
-  editadoEm  DateTime   @updatedAt
+  criadoEm  DateTime @default(now())
+  editadoEm DateTime @updatedAt
 
   @@unique([usuarioId, data])
   @@index([usuarioId, data])
@@ -376,7 +382,7 @@ model Avaliacao {
 }
 
 enum NivelNatacao {
-  ADAPTACAO      // adaptação ao meio líquido
+  ADAPTACAO // adaptação ao meio líquido
   INICIANTE
   INTERMEDIARIO
   AVANCADO
@@ -412,4 +418,118 @@ model PlanoProjeto {
   valorMensal    Decimal @db.Decimal(10, 2)
 
   @@unique([projetoId, aulasPorSemana])
+}
+
+// ---------------------------------------------------------------------------
+// Viagem: área só de quem vai (a coordenação escolhe a lista). Junta as
+// informações práticas (cronograma, avisos, checklist) e a galeria de fotos e
+// vídeos, com o concurso de quem manda o melhor conteúdo. Genérica pra poder
+// ter mais de uma viagem ao longo dos anos.
+// ---------------------------------------------------------------------------
+
+enum TipoMidia {
+  FOTO
+  VIDEO
+}
+
+model Viagem {
+  id          Int       @id @default(autoincrement())
+  nome        String
+  destino     String?
+  dataSaida   DateTime?
+  dataRetorno DateTime?
+  localSaida  String? // onde o ônibus sai
+  descricao   String?
+  premio      String? // o que ganha quem fizer mais pontos no concurso
+  ativa       Boolean   @default(true)
+  criadoEm    DateTime  @default(now())
+
+  participantes ViagemParticipante[]
+  eventos       ViagemEvento[]
+  avisos        ViagemAviso[]
+  checklist     ViagemChecklistItem[]
+  midias        ViagemMidia[]
+}
+
+model ViagemParticipante {
+  id        Int     @id @default(autoincrement())
+  viagemId  Int
+  viagem    Viagem  @relation(fields: [viagemId], references: [id], onDelete: Cascade)
+  usuarioId String
+  usuario   Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@unique([viagemId, usuarioId])
+  @@index([usuarioId])
+}
+
+// Cronograma. A saída do ônibus é só mais um evento — a tela destaca o
+// próximo compromisso no topo.
+model ViagemEvento {
+  id         Int      @id @default(autoincrement())
+  viagemId   Int
+  viagem     Viagem   @relation(fields: [viagemId], references: [id], onDelete: Cascade)
+  inicio     DateTime
+  titulo     String
+  local      String?
+  observacao String?
+
+  @@index([viagemId, inicio])
+}
+
+model ViagemAviso {
+  id         Int      @id @default(autoincrement())
+  viagemId   Int
+  viagem     Viagem   @relation(fields: [viagemId], references: [id], onDelete: Cascade)
+  titulo     String
+  texto      String
+  importante Boolean  @default(false)
+  autorId    String
+  autor      Usuario  @relation(fields: [autorId], references: [id])
+  criadoEm   DateTime @default(now())
+
+  @@index([viagemId, criadoEm])
+}
+
+// O que levar. A lista é uma só pra viagem; cada pessoa marca a sua.
+model ViagemChecklistItem {
+  id       Int    @id @default(autoincrement())
+  viagemId Int
+  viagem   Viagem @relation(fields: [viagemId], references: [id], onDelete: Cascade)
+  texto    String
+  ordem    Int    @default(0)
+
+  marcados ViagemChecklistMarcado[]
+
+  @@index([viagemId, ordem])
+}
+
+model ViagemChecklistMarcado {
+  id        Int                 @id @default(autoincrement())
+  itemId    Int
+  item      ViagemChecklistItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  usuarioId String
+  usuario   Usuario             @relation(fields: [usuarioId], references: [id])
+
+  @@unique([itemId, usuarioId])
+}
+
+// Foto ou vídeo da viagem. O arquivo fica no Vercel Blob; aqui só o link.
+// A nota (1 a 3 estrelas) é dada só pela coordenação; null = ainda não
+// avaliada. Os pontos de cada pessoa são a soma das notas dos envios dela.
+model ViagemMidia {
+  id            Int       @id @default(autoincrement())
+  viagemId      Int
+  viagem        Viagem    @relation(fields: [viagemId], references: [id], onDelete: Cascade)
+  autorId       String
+  autor         Usuario   @relation(fields: [autorId], references: [id])
+  tipo          TipoMidia
+  url           String
+  legenda       String?
+  nota          Int?
+  avaliadaPorId String?
+  avaliadaPor   Usuario?  @relation("ViagemMidiaAvaliadaPor", fields: [avaliadaPorId], references: [id])
+  criadoEm      DateTime  @default(now())
+
+  @@index([viagemId, criadoEm])
+  @@index([viagemId, autorId])
 }

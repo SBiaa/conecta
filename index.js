@@ -16,6 +16,7 @@ const vendasRoutes = require('./routes/vendas')
 const despesasRoutes = require('./routes/despesas')
 const categoriasDespesaRoutes = require('./routes/categoriasDespesa')
 const financeiroRoutes = require('./routes/financeiro')
+const viagensRoutes = require('./routes/viagens')
 const { autenticar, exigirPapel } = require('./middlewares/auth')
 const app = express()
 
@@ -39,6 +40,7 @@ app.use('/vendas', autenticar, exigirPapel('ADMIN'), vendasRoutes)
 app.use('/despesas', autenticar, exigirPapel('ADMIN'), despesasRoutes)
 app.use('/categorias-despesa', autenticar, exigirPapel('ADMIN'), categoriasDespesaRoutes)
 app.use('/financeiro', autenticar, exigirPapel('ADMIN'), financeiroRoutes)
+app.use('/viagens', autenticar, viagensRoutes)
 
 app.get('/', (req, res) => {
   res.json({ mensagem: 'API Conecta funcionando!' })
