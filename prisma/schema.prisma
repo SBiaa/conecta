@@ -116,6 +116,10 @@ cep         String?
 
   niveisNatacao        NivelNatacaoRegistro[]
   niveisNatacaoFeitos  NivelNatacaoRegistro[] @relation("NivelNatacaoRegistradoPor")
+
+  // UID do chaveiro/cartão NFC usado no portão (hex maiúsculo, sem separador)
+  tagNfc  String?        @unique
+  acessos AcessoPortao[]
 }
 
 model Projeto {
@@ -412,4 +416,34 @@ model PlanoProjeto {
   valorMensal    Decimal @db.Decimal(10, 2)
 
   @@unique([projetoId, aulasPorSemana])
+}
+
+// Aparelho instalado no portão (ESP32 + leitor NFC). Autentica com um token
+// próprio, gerado pela coordenação; só o hash fica no banco.
+model Dispositivo {
+  id            Int       @id @default(autoincrement())
+  nome          String
+  tokenHash     String    @unique
+  ativo         Boolean   @default(true)
+  criadoEm      DateTime  @default(now())
+  ultimoContato DateTime?
+
+  acessos AcessoPortao[]
+}
+
+// Cada tentativa de entrada no portão, liberada ou não. Tag desconhecida
+// também fica registrada — é assim que a coordenação cadastra um chaveiro novo.
+model AcessoPortao {
+  id            Int         @id @default(autoincrement())
+  dispositivoId Int
+  dispositivo   Dispositivo @relation(fields: [dispositivoId], references: [id])
+  tagNfc        String
+  usuarioId     String?
+  usuario       Usuario?    @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  liberado      Boolean
+  motivo        String
+  offline       Boolean     @default(false) // decidido pelo próprio aparelho, sem internet
+  criadoEm      DateTime    @default(now())
+
+  @@index([criadoEm])
 }
