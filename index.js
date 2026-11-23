@@ -17,7 +17,8 @@ const despesasRoutes = require('./routes/despesas')
 const categoriasDespesaRoutes = require('./routes/categoriasDespesa')
 const financeiroRoutes = require('./routes/financeiro')
 const viagensRoutes = require('./routes/viagens')
-const { autenticar, exigirPapel } = require('./middlewares/auth')
+const acessoViagemRoutes = require('./routes/acessoViagem')
+const { autenticar, autenticarViagem, exigirPapel } = require('./middlewares/auth')
 const app = express()
 
 app.use(cors())
@@ -40,7 +41,9 @@ app.use('/vendas', autenticar, exigirPapel('ADMIN'), vendasRoutes)
 app.use('/despesas', autenticar, exigirPapel('ADMIN'), despesasRoutes)
 app.use('/categorias-despesa', autenticar, exigirPapel('ADMIN'), categoriasDespesaRoutes)
 app.use('/financeiro', autenticar, exigirPapel('ADMIN'), financeiroRoutes)
-app.use('/viagens', autenticar, viagensRoutes)
+app.use('/viagens', autenticarViagem, viagensRoutes)
+// Entrada pelo link da viagem (sem login): a pessoa digita o celular.
+app.use('/acesso-viagem', acessoViagemRoutes)
 
 app.get('/', (req, res) => {
   res.json({ mensagem: 'API Conecta funcionando!' })

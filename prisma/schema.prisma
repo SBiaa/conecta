@@ -16,6 +16,7 @@ enum Papel {
   ADMIN
   PROFESSOR
   ASSOCIADO
+  CONVIDADO // vai numa viagem sem ser associada: só nome e celular, entra pelo link da viagem
 }
 
 enum Status {
@@ -443,6 +444,9 @@ model Viagem {
   premio      String? // o que ganha quem fizer mais pontos no concurso
   ativa       Boolean   @default(true)
   criadoEm    DateTime  @default(now())
+  // Código do link mandado no grupo (/v/<codigo>). Quem abre digita o celular
+  // e entra só nesta viagem. Trocar o código derruba todos os acessos por link.
+  codigoAcesso String?  @unique
 
   participantes ViagemParticipante[]
   eventos       ViagemEvento[]
@@ -457,6 +461,9 @@ model ViagemParticipante {
   viagem    Viagem  @relation(fields: [viagemId], references: [id], onDelete: Cascade)
   usuarioId String
   usuario   Usuario @relation(fields: [usuarioId], references: [id])
+  // Celular da lista da viagem: é com ele que a pessoa entra pelo link. Fica
+  // aqui (e não no cadastro) pra não mexer no telefone da associada.
+  celular   String?
 
   @@unique([viagemId, usuarioId])
   @@index([usuarioId])

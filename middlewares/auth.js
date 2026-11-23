@@ -1,21 +1,35 @@
 const jwt = require('jsonwebtoken')
 
-const autenticar = (req, res, next) => {
+const lerToken = (req) => {
   const authHeader = req.headers.authorization
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ erro: 'Token não fornecido' })
-  }
-
-  const token = authHeader.slice('Bearer '.length)
-
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return { erro: 'Token não fornecido' }
   try {
-    const decodificado = jwt.verify(token, process.env.JWT_SECRET)
-    req.usuario = decodificado
-    next()
+    return { dados: jwt.verify(authHeader.slice('Bearer '.length), process.env.JWT_SECRET) }
   } catch (erro) {
-    return res.status(401).json({ erro: 'Token inválido' })
+    return { erro: 'Token inválido' }
   }
+}
+
+// Login normal (CPF e senha). O acesso pelo link da viagem não passa aqui:
+// ele só vale dentro de /viagens.
+const autenticar = (req, res, next) => {
+  const { dados, erro } = lerToken(req)
+  if (erro) return res.status(401).json({ erro })
+  if (dados.viagemId) return res.status(401).json({ erro: 'Entre com CPF e senha' })
+  req.usuario = dados
+  next()
+}
+
+// /viagens aceita o login normal e também o acesso pelo link da viagem. Quem
+// entrou pelo link é tratado como convidado, mesmo que tenha outro papel: vê
+// só aquela viagem e nada da coordenação.
+const autenticarViagem = (req, res, next) => {
+  const { dados, erro } = lerToken(req)
+  if (erro) return res.status(401).json({ erro })
+  req.usuario = dados.viagemId
+    ? { id: dados.id, papel: 'CONVIDADO', viagemId: dados.viagemId, codigo: dados.codigo }
+    : dados
+  next()
 }
 
 const exigirPapel = (...papeis) => {
@@ -27,4 +41,4 @@ const exigirPapel = (...papeis) => {
   }
 }
 
-module.exports = { autenticar, exigirPapel }
+module.exports = { autenticar, autenticarViagem, exigirPapel }

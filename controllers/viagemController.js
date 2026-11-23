@@ -1,6 +1,8 @@
 const prisma = require('../db')
 const { generateClientTokenFromReadWriteToken } = require('@vercel/blob/client')
 const { del } = require('@vercel/blob')
+const { gerarCodigo, linkValido, acessoValidoAte } = require('../lib/acessoViagem')
+const { chaveCelular, formatarCelular } = require('../lib/celular')
 
 // Tipos de arquivo aceitos na galeria. HEIC é o formato padrão da câmera do
 // iPhone; MOV é o vídeo do iPhone.
@@ -28,6 +30,16 @@ const dataOuNula = (valor) => {
 // O porteiro: admin vê qualquer viagem; o resto só as que participa (e só se a
 // viagem estiver ativa). Devolve null quando a pessoa não pode ver.
 const buscarViagemVisivel = async (usuario, viagemId) => {
+  // Entrou pelo link: só a viagem do link, e só enquanto o código for o mesmo
+  // e o prazo não tiver passado.
+  if (usuario.viagemId) {
+    if (usuario.viagemId !== viagemId) return null
+    const viagem = await prisma.viagem.findFirst({
+      where: { id: viagemId, ativa: true, participantes: { some: { usuarioId: usuario.id } } }
+    })
+    if (!viagem || viagem.codigoAcesso !== usuario.codigo || !linkValido(viagem)) return null
+    return viagem
+  }
   if (ehAdmin(usuario)) {
     return prisma.viagem.findUnique({ where: { id: viagemId } })
   }
@@ -45,6 +57,11 @@ const carregarViagem = async (req, res) => {
     return null
   }
   const viagem = await buscarViagemVisivel(req.usuario, viagemId)
+  if (!viagem && req.usuario.viagemId) {
+    // 401 faz a tela mandar a pessoa pra página "abra o link de novo".
+    res.status(401).json({ erro: 'Seu acesso pelo link da viagem terminou' })
+    return null
+  }
   if (!viagem) {
     res.status(404).json({ erro: 'Viagem não encontrada' })
     return null
@@ -71,7 +88,11 @@ const selecionarPessoa = { id: true, nome: true, fotoUrl: true }
 const listar = comErro(async (req, res) => {
   const where = ehAdmin(req.usuario)
     ? {}
-    : { ativa: true, participantes: { some: { usuarioId: req.usuario.id } } }
+    : {
+        ativa: true,
+        participantes: { some: { usuarioId: req.usuario.id } },
+        ...(req.usuario.viagemId ? { id: req.usuario.viagemId } : {})
+      }
 
   const viagens = await prisma.viagem.findMany({
     where,
@@ -99,17 +120,23 @@ const detalhar = comErro(async (req, res) => {
     }),
     prisma.viagemParticipante.findMany({
       where: { viagemId: viagem.id },
-      include: { usuario: { select: { ...selecionarPessoa, papel: true } } },
+      include: { usuario: { select: { ...selecionarPessoa, papel: true, telefone: true } } },
       orderBy: { usuario: { nome: 'asc' } }
     })
   ])
 
+  // O celular e o código do link só interessam à coordenação.
+  const admin = ehAdmin(req.usuario)
+  const { codigoAcesso, ...dadosViagem } = viagem
   res.json({
-    ...viagem,
+    ...dadosViagem,
+    ...(admin ? { codigoAcesso, acessoAte: acessoValidoAte(viagem) } : {}),
     eventos,
     avisos,
     checklist: itens.map(({ marcados, ...item }) => ({ ...item, marcado: marcados.length > 0 })),
-    participantes: participantes.map((p) => p.usuario)
+    participantes: participantes.map(({ usuario: { telefone, ...pessoa }, celular }) =>
+      admin ? { ...pessoa, celular: formatarCelular(celular ?? telefone) } : pessoa
+    )
   })
 })
 
@@ -416,6 +443,205 @@ const removerParticipante = comErro(async (req, res) => {
   res.json({ ok: true })
 })
 
+// Link do grupo. Gerar de novo troca o código: o link antigo para de
+// funcionar e quem entrou por ele precisa abrir o novo.
+const gerarLink = comErro(async (req, res) => {
+  const viagem = await carregarViagem(req, res)
+  if (!viagem) return
+
+  for (let tentativa = 0; tentativa < 5; tentativa++) {
+    try {
+      const atualizada = await prisma.viagem.update({
+        where: { id: viagem.id },
+        data: { codigoAcesso: gerarCodigo() }
+      })
+      return res.json({ codigoAcesso: atualizada.codigoAcesso, acessoAte: acessoValidoAte(atualizada) })
+    } catch (erro) {
+      if (erro.code !== 'P2002') throw erro // P2002 = código repetido: tenta outro
+    }
+  }
+  res.status(500).json({ erro: 'Não foi possível gerar o link. Tente de novo.' })
+})
+
+const desligarLink = comErro(async (req, res) => {
+  const viagem = await carregarViagem(req, res)
+  if (!viagem) return
+
+  await prisma.viagem.update({ where: { id: viagem.id }, data: { codigoAcesso: null } })
+  res.json({ ok: true })
+})
+
+// Corrige o celular de quem vai (é com ele que a pessoa entra pelo link).
+const atualizarCelular = comErro(async (req, res) => {
+  const viagem = await carregarViagem(req, res)
+  if (!viagem) return
+
+  const texto = textoOuNulo(req.body?.celular)
+  if (texto && !chaveCelular(texto)) return res.status(400).json({ erro: 'Celular incompleto' })
+
+  const { count } = await prisma.viagemParticipante.updateMany({
+    where: { viagemId: viagem.id, usuarioId: String(req.params.usuarioId) },
+    data: { celular: texto ? formatarCelular(texto) : null }
+  })
+  if (count === 0) return res.status(404).json({ erro: 'Essa pessoa não está na viagem' })
+  res.json({ ok: true })
+})
+
+// --- Importar a lista de quem vai -------------------------------------------
+// A coordenação cola a lista (do caderno, do WhatsApp, de uma planilha). Cada
+// linha vira nome + celular. Primeiro mostra a prévia, com a sugestão de quem
+// já tem cadastro; depois a coordenação confirma.
+
+const normalizarNome = (nome) => String(nome || '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim()
+const primeiroNome = (nome) => normalizarNome(nome).split(' ')[0] || ''
+
+const REGEX_CELULAR = /^(\+?55\s*)?(\(?\d{2}\)?\s*)?9?\d{4}[\s.-]?\d{4}$/
+const REGEX_CELULAR_NO_FIM = /(\+?55\s*)?(\(?\d{2}\)?\s*)?9?\d{4}[\s.-]?\d{4}\s*$/
+
+const lerLinha = (bruta) => {
+  const linha = bruta.replace(/^\uFEFF/, '').trim()
+  const campos = linha.split(/[;\t]/).map((c) => c.replace(/\(\?\)/g, '').trim()).filter(Boolean)
+  if (campos.some((c) => normalizarNome(c) === 'nome')) return null // cabeçalho da planilha
+
+  let nome = null
+  let celular = null
+  if (campos.length > 1) {
+    // Planilha: o celular costuma vir depois do RG, então vale o último campo
+    // com cara de celular; o nome é o primeiro campo com letras.
+    for (const c of campos) if (REGEX_CELULAR.test(c)) celular = c
+    nome = campos.find((c) => /\p{L}{2}/u.test(c)) ?? null
+  } else {
+    // Texto livre: "Maria da Silva (11) 99999-9999" ou "1. Maria - 99999-9999".
+    const achado = linha.match(REGEX_CELULAR_NO_FIM)
+    if (achado) {
+      celular = achado[0].trim()
+      nome = linha.slice(0, achado.index)
+    } else {
+      nome = linha
+    }
+    nome = nome
+      .replace(/^[\d\s.)ºª°-]+/, '')
+      .replace(/^nome\s*[=:]\s*/i, '')
+      .replace(/[\s,;:=–-]+$/, '')
+  }
+  nome = nome ? nome.replace(/\s+/g, ' ').trim() : null
+  if (!nome || !/\p{L}{2}/u.test(nome)) return null
+  return { nome, celular: celular ? formatarCelular(celular) : null }
+}
+
+const candidatosParaImportar = () => prisma.usuario.findMany({
+  where: { status: 'ATIVO', responsavelId: null },
+  select: { id: true, nome: true, telefone: true, papel: true }
+})
+
+// Mesma pessoa = mesmo celular e mesmo primeiro nome, ou nome completo igual.
+// Só sugere quando há um candidato só — na dúvida, a coordenação escolhe.
+const sugerirCadastro = (linha, candidatos) => {
+  const chave = chaveCelular(linha.celular)
+  const nome = normalizarNome(linha.nome)
+  const achados = candidatos.filter((u) =>
+    (chave && chaveCelular(u.telefone) === chave && primeiroNome(u.nome) === primeiroNome(nome)) ||
+    normalizarNome(u.nome) === nome
+  )
+  return achados.length === 1 ? achados[0] : null
+}
+
+const previaImportacao = comErro(async (req, res) => {
+  const viagem = await carregarViagem(req, res)
+  if (!viagem) return
+
+  const linhas = String(req.body?.texto || '').split(/\r?\n/).map(lerLinha).filter(Boolean)
+  if (linhas.length === 0) return res.status(400).json({ erro: 'Não achei nenhum nome no texto colado' })
+  if (linhas.length > 300) return res.status(400).json({ erro: 'Cole no máximo 300 nomes de cada vez' })
+
+  const [candidatos, jaVao] = await Promise.all([
+    candidatosParaImportar(),
+    prisma.viagemParticipante.findMany({
+      where: { viagemId: viagem.id },
+      select: { usuarioId: true, usuario: { select: { nome: true } } }
+    })
+  ])
+  const idsNaViagem = new Set(jaVao.map((p) => p.usuarioId))
+  const nomesNaViagem = new Set(jaVao.map((p) => normalizarNome(p.usuario.nome)))
+
+  // Celular repetido na lista: avisa, porque essas pessoas vão escolher o
+  // nome depois de digitar o número (ex.: casal com um celular só).
+  const contagem = new Map()
+  for (const l of linhas) {
+    const chave = chaveCelular(l.celular)
+    if (chave) contagem.set(chave, (contagem.get(chave) || 0) + 1)
+  }
+
+  res.json(linhas.map((linha) => {
+    const sugestao = sugerirCadastro(linha, candidatos)
+    const chave = chaveCelular(linha.celular)
+    return {
+      ...linha,
+      sugestao: sugestao && { id: sugestao.id, nome: sugestao.nome, papel: sugestao.papel },
+      jaNaViagem: Boolean(sugestao && idsNaViagem.has(sugestao.id)) || nomesNaViagem.has(normalizarNome(linha.nome)),
+      celularRepetido: Boolean(chave) && contagem.get(chave) > 1
+    }
+  }))
+})
+
+const importar = comErro(async (req, res) => {
+  const viagem = await carregarViagem(req, res)
+  if (!viagem) return
+
+  const pessoas = Array.isArray(req.body?.pessoas) ? req.body.pessoas : []
+  if (pessoas.length === 0) return res.status(400).json({ erro: 'Nenhuma pessoa marcada' })
+  if (pessoas.length > 300) return res.status(400).json({ erro: 'No máximo 300 pessoas de cada vez' })
+
+  const itens = []
+  for (const p of pessoas) {
+    const nome = textoOuNulo(p?.nome)
+    const celular = textoOuNulo(p?.celular)
+    if (!nome) return res.status(400).json({ erro: 'Tem uma linha sem nome' })
+    if (celular && !chaveCelular(celular)) return res.status(400).json({ erro: `Celular incompleto: ${nome}` })
+    itens.push({
+      nome,
+      celular: celular ? formatarCelular(celular) : null,
+      usuarioId: p?.usuarioId ? String(p.usuarioId) : null
+    })
+  }
+
+  const idsInformados = itens.map((i) => i.usuarioId).filter(Boolean)
+  const existentes = await prisma.usuario.findMany({
+    where: { id: { in: idsInformados }, responsavelId: null },
+    select: { id: true }
+  })
+  const validos = new Set(existentes.map((u) => u.id))
+  const invalido = itens.find((i) => i.usuarioId && !validos.has(i.usuarioId))
+  if (invalido) return res.status(400).json({ erro: `Cadastro não encontrado: ${invalido.nome}` })
+
+  let criados = 0
+  let vinculados = 0
+  await prisma.$transaction(async (tx) => {
+    for (const item of itens) {
+      let usuarioId = item.usuarioId
+      if (usuarioId) {
+        vinculados++
+      } else {
+        const novo = await tx.usuario.create({
+          data: { nome: item.nome, telefone: item.celular, papel: 'CONVIDADO' },
+          select: { id: true }
+        })
+        usuarioId = novo.id
+        criados++
+      }
+      await tx.viagemParticipante.upsert({
+        where: { viagemId_usuarioId: { viagemId: viagem.id, usuarioId } },
+        create: { viagemId: viagem.id, usuarioId, celular: item.celular },
+        update: item.celular ? { celular: item.celular } : {}
+      })
+    }
+  }, { timeout: 30000 })
+
+  res.status(201).json({ criados, vinculados })
+})
+
 const dadosDoEvento = (body) => {
   const titulo = textoOuNulo(body.titulo)
   const inicio = dataOuNula(body.inicio)
@@ -528,6 +754,11 @@ module.exports = {
   apagar,
   adicionarParticipantes,
   removerParticipante,
+  atualizarCelular,
+  previaImportacao,
+  importar,
+  gerarLink,
+  desligarLink,
   criarEvento,
   atualizarEvento,
   apagarEvento,
