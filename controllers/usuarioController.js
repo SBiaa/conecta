@@ -20,8 +20,40 @@ const gerarSenhaAmigavel = () => {
   return `${flor}${digitos}`
 }
 
+// Resumo de cada associada para a lista da coordenação (?detalhes=1):
+// turmas das matrículas ativas e a situação das mensalidades. Fica atrás do
+// parâmetro para não pesar nas outras telas que só precisam do nome.
+function resumirDetalhes(matriculas) {
+  const agora = new Date()
+  const ativas = matriculas.filter((m) => m.ativa)
+  const turmas = ativas.flatMap((m) => m.turmasVinculadas.map((tv) => tv.turma))
+
+  const pendentes = ativas.flatMap((m) => m.pagamentos.filter((p) => p.status === 'PENDENTE'))
+  const atrasadas = pendentes.filter((p) => p.vencimento < agora)
+  const aVencer = pendentes.filter((p) => p.vencimento >= agora)
+  const pagas = matriculas
+    .flatMap((m) => m.pagamentos.filter((p) => p.status === 'PAGA' && p.dataPagamento))
+    .sort((a, b) => b.dataPagamento - a.dataPagamento)
+  const ultimo = pagas[0] ?? null
+  const soma = (lista) => lista.reduce((total, p) => total + Number(p.valor), 0)
+
+  return {
+    turmas,
+    financeiro: {
+      atrasado: soma(atrasadas),
+      mesesAtrasados: atrasadas.length,
+      aVencer: soma(aVencer),
+      proximoVencimento: aVencer.length ? aVencer.map((p) => p.vencimento).sort((a, b) => a - b)[0] : null,
+      abonada: ultimo?.formaPagamento === 'ABONADO',
+      ultimoPagamento: ultimo ? { data: ultimo.dataPagamento, forma: ultimo.formaPagamento } : null
+    }
+  }
+}
+
 const listar = async (req, res) => {
-  const { papel, busca } = req.query
+  const { papel, busca, detalhes } = req.query
+  const comDetalhes = detalhes === '1'
+  const digitosBusca = busca ? String(busca).replace(/\D/g, '') : ''
 
   try {
     const usuarios = await prisma.usuario.findMany({
@@ -31,7 +63,8 @@ const listar = async (req, res) => {
           ? {
               OR: [
                 { nome: { contains: busca, mode: 'insensitive' } },
-                { cpf: { contains: busca } }
+                { cpf: { contains: busca } },
+                ...(digitosBusca.length >= 4 ? [{ telefone: { contains: digitosBusca } }] : [])
               ]
             }
           : {})
@@ -47,10 +80,33 @@ const listar = async (req, res) => {
         status: true,
         criadoEm: true,
         responsavel: { select: { id: true, nome: true } },
-        _count: { select: { dependentes: true } }
+        _count: { select: { dependentes: true } },
+        ...(comDetalhes
+          ? {
+              dataNascimento: true,
+              matriculas: {
+                select: {
+                  ativa: true,
+                  turmasVinculadas: {
+                    select: { turma: { select: { id: true, nome: true, projeto: { select: { id: true, nome: true } } } } }
+                  },
+                  pagamentos: {
+                    where: { status: { in: ['PENDENTE', 'PAGA'] } },
+                    select: { status: true, valor: true, vencimento: true, dataPagamento: true, formaPagamento: true }
+                  }
+                }
+              }
+            }
+          : {})
       }
     })
-    res.json(usuarios.map(({ _count, ...u }) => ({ ...u, totalDependentes: _count.dependentes })))
+    res.json(
+      usuarios.map(({ _count, matriculas, ...u }) => ({
+        ...u,
+        totalDependentes: _count.dependentes,
+        ...(comDetalhes ? resumirDetalhes(matriculas) : {})
+      }))
+    )
   } catch (erro) {
     console.error(erro)
     res.status(500).json({ erro: 'Erro interno do servidor' })
